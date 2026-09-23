@@ -1,2 +1,2 @@
 # Asteroid-Impact-Probability
-A Monte Carlo model that estimates the probability of a near-Earth asteroid impacting Earth, given the uncertainty in its observed trajectory.
+Real asteroid orbits are never known with perfect precision — telescope observations carry measurement error. Instead of predicting a single deterministic path, this project samples thousands of plausible trajectories consistent with that uncertainty and checks how many of them actually intersect Earth's effective gravitational cross-section.
