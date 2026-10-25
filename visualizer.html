@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simulador Interactivo de Impacto de Asteroides</title>
+    <style>
+        body { margin: 0; overflow: hidden; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #050505; color: white; }
+        canvas { display: block; }
+        #ui { position: absolute; top: 20px; left: 20px; background: rgba(0,0,0,0.8); padding: 20px; border-radius: 10px; border: 1px solid #444; width: 300px; pointer-events: auto; }
+        .control-group { margin-bottom: 15px; }
+        label { display: block; font-size: 12px; color: #aaa; margin-bottom: 5px; }
+        input[type="range"] { width: 100%; cursor: pointer; }
+        .btn-row { display: flex; gap: 10px; margin-bottom: 15px; }
+        button { flex: 1; padding: 8px; cursor: pointer; background: #333; color: white; border: 1px solid #666; border-radius: 4px; transition: 0.2s; }
+        button:hover { background: #555; }
+        button.primary { background: #2a52be; border-color: #4a62be; }
+        #energy-chart { position: absolute; bottom: 20px; right: 20px; background: rgba(0,0,0,0.8); padding: 15px; border-radius: 10px; border: 1px solid #444; width: 400px; height: 200px; }
+        #file-input-container { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; background: rgba(0,0,0,0.9); padding: 40px; border-radius: 20px; border: 2px dashed #666; z-index: 100; }
+        .hidden { display: none !important; }
+    </style>
+</head>
+<body>
+
+    <div id="file-input-container">
+        <h2>Cargar Datos de Simulación</h2>
+        <p>Por favor, selecciona el archivo <code>trajectories.csv</code> generado por el programa en C.</p>
+        <input type="file" id="csv-file" accept=".csv">
+    </div>
+
+    <div id="ui" class="hidden">
+        <h3>Control de Simulación</h3>
+        <div class="btn-row">
+            <button id="btn-toggle" class="primary">Pausar</button>
+            <button id="btn-reset">Reset</button>
+        </div>
+        <div class="control-group">
+            <label>Velocidad de Reproducción</label>
+            <input type="range" id="slider-speed" min="0.1" max="5" step="0.1" value="1">
+        </div>
+        <div id="stats" style="font-size: 13px; line-height: 1.6;">
+            <div>Paso: <span id="stat-step">0</span></div>
+            <div>Tierra: <span id="stat-dist">0</span> km (promedio)</div>
+        </div>
+    </div>
+
+    <div id="energy-chart" class="hidden">
+        <canvas id="chart-canvas"></canvas>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <script>
+        let scene, camera, renderer, controls;
+        let bodies = {}, meteors = [], trails = [];
+        let data = null;
+        let currentStep = 0;
+        let isPlaying = true;
+        let playbackSpeed = 1;
+        let energyChart;
+
+        const SCALE = 1e-9;
+        const SUN_POS = {x: 0, y: 0, z: 0};
+        const EARTH_BASE_POS = {x: 1.496e11, y: 0, z: 0};
+        const MOON_BASE_POS = {x: 3.844e8, y: 0, z: 0};
+
+        function initThree() {
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            document.body.appendChild(renderer.domElement);
+
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            camera.position.set(200, 100, 200);
+            controls.update();
+
+            scene.add(new THREE.AmbientLight(0x404040));
+            const sunLight = new THREE.PointLight(0xffffff, 2, 1000);
+            scene.add(sunLight);
+
+            const boxSize = 300;
+            const boxGeo = new THREE.BoxGeometry(boxSize, boxSize, boxSize);
+            const edges = new THREE.EdgesGeometry(boxGeo);
+            scene.add(new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0x444444 })));
+            scene.add(new THREE.AxesHelper(150));
+
+            createBody('Sol', SUN_POS, 0xffff00, 10);
+            createBody('Tierra', EARTH_BASE_POS, 0x2255ff, 8); // Tierra más grande
+            createBody('Luna', {x:0, y:0, z:0}, 0xaaaaaa, 1);
+        }
+
+        function createBody(name, pos, color, size) {
+            const geo = new THREE.SphereGeometry(size, 32, 32);
+            const mat = new THREE.MeshPhongMaterial({ color: color });
+            const mesh = new THREE.Mesh(geo, mat);
+            mesh.position.set(pos.x * SCALE, pos.y * SCALE, pos.z * SCALE);
+            scene.add(mesh);
+            bodies[name] = mesh;
+        }
+
+        async function loadCSV(file) {
+            const text = await file.text();
+            const lines = text.split('\n').slice(1);
+            const parsedData = [];
+            lines.forEach(line => {
+                if (!line.trim()) return;
+                const cols = line.split(',');
+                parsedData.push({
+                    sim_id: parseInt(cols[0]), step: parseInt(cols[1]),
+                    x: parseFloat(cols[2]), y: parseFloat(cols[3]), z: parseFloat(cols[4]),
+                    vx: parseFloat(cols[5]), vy: parseFloat(cols[6]), vz: parseFloat(cols[7]),
+                    ek: parseFloat(cols[8]), ep: parseFloat(cols[9]), etot: parseFloat(cols[10])
+                });
+            });
+            return parsedData;
+        }
+
+        function initChart() {
+            const ctx = document.getElementById('chart-canvas').getContext('2d');
+            energyChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [
+                        { label: 'Cinética', borderColor: 'rgb(255, 99, 132)', data: [], borderWidth: 1, pointRadius: 0 },
+                        { label: 'Potencial', borderColor: 'rgb(54, 162, 235)', data: [], borderWidth: 1, pointRadius: 0 },
+                        { label: 'Total', borderColor: 'rgb(255, 205, 86)', data: [], borderWidth: 2, pointRadius: 0 }
+                    ]
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    scales: { x: { display: false }, y: { ticks: { color: '#aaa' }, grid: { color: '#333' } } },
+                    plugins: { legend: { labels: { color: 'white', boxWidth: 10 } } }
+                }
+            });
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            if (isPlaying && data) {
+                const simIds = [...new Set(data.map(d => d.sim_id))];
+                let totalDist = 0;
+                let count = 0;
+
+                // Movimiento orbital de la Tierra y la Luna
+                const time = currentStep * 0.0172;
+                const earthX = EARTH_BASE_POS.x * Math.cos(time);
+                const earthY = EARTH_BASE_POS.x * Math.sin(time);
+                bodies['Tierra'].position.set(earthX * SCALE, earthY * SCALE, 0);
+
+                const moonX = earthX + MOON_BASE_POS.x * Math.cos(time * 13);
+                const moonY = earthY + MOON_BASE_POS.x * Math.sin(time * 13);
+                bodies['Luna'].position.set(moonX * SCALE, moonY * SCALE, 0);
+
+                // Actualizar todos los meteoritos del enjambre
+                simIds.forEach((id, index) => {
+                    const simData = data.filter(d => d.sim_id === id);
+                    if (currentStep < simData.length) {
+                        const state = simData[currentStep];
+                        const pos = new THREE.Vector3(state.x * SCALE, state.y * SCALE, state.z * SCALE);
+                        meteors[index].position.copy(pos);
+
+                        // Actualizar estela (Trail)
+                        const positions = trails[index].geometry.attributes.position.array;
+                        for (let i = 0; i < positions.length - 3; i++) {
+                            positions[i] = positions[i + 3];
+                        }
+                        positions[positions.length - 3] = pos.x;
+                        positions[positions.length - 2] = pos.y;
+                        positions[positions.length - 1] = pos.z;
+                        trails[index].geometry.attributes.position.needsUpdate = true;
+
+                        const dist = Math.sqrt(Math.pow(state.x - earthX, 2) + Math.pow(state.y - earthY, 2) + Math.pow(state.z, 2));
+                        totalDist += dist;
+                        count++;
+                    }
+                });
+
+                document.getElementById('stat-step').innerText = currentStep;
+                document.getElementById('stat-dist').innerText = (count > 0 ? (totalDist / count / 1000) : 0).toFixed(2);
+
+                if (simIds.length > 0) {
+                    const refSim = data.filter(d => d.sim_id === simIds[0]);
+                    if (currentStep < refSim.length) {
+                        const state = refSim[currentStep];
+                        energyChart.data.labels.push(state.step);
+                        energyChart.data.datasets[0].data.push(state.ek);
+                        energyChart.data.datasets[1].data.push(state.ep);
+                        energyChart.data.datasets[2].data.push(state.etot);
+                        if (energyChart.data.labels.length > 100) {
+                            energyChart.data.labels.shift();
+                            energyChart.data.datasets.forEach(ds => ds.data.shift());
+                        }
+                        energyChart.update('none');
+                    }
+                }
+                currentStep++;
+            }
+            controls.update();
+            renderer.render(scene, camera);
+        }
+
+        document.getElementById('csv-file').onchange = async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            data = await loadCSV(file);
+            const simIds = [...new Set(data.map(d => d.sim_id))];
+            const metGeo = new THREE.SphereGeometry(0.5, 16, 16);
+            const metMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.6 });
+
+            simIds.forEach((id, index) => {
+                const m = new THREE.Mesh(metGeo, metMat);
+                scene.add(m);
+                meteors.push(m);
+
+                // Crear estela (Trail)
+                const trailMat = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.7 });
+                const trailPoints = new Float32Array(300 * 3); // Guardamos los últimos 100 puntos
+                const trailGeo = new THREE.BufferGeometry();
+                trailGeo.setAttribute('position', new THREE.BufferAttribute(trailPoints, 3));
+                const trail = new THREE.Line(trailGeo, trailMat);
+                scene.add(trail);
+                trails.push(trail);
+            });
+
+            document.getElementById('file-input-container').classList.add('hidden');
+            document.getElementById('ui').classList.remove('hidden');
+            document.getElementById('energy-chart').classList.remove('hidden');
+        };
+
+        document.getElementById('btn-toggle').onclick = () => {
+            isPlaying = !isPlaying;
+            document.getElementById('btn-toggle').innerText = isPlaying ? 'Pausar' : 'Play';
+        };
+        document.getElementById('btn-reset').onclick = () => {
+            currentStep = 0;
+            energyChart.data.labels = [];
+            energyChart.data.datasets.forEach(ds => ds.data = []);
+            energyChart.update();
+            // Resetear estelas
+            trails.forEach(t => {
+                const pos = t.geometry.attributes.position.array;
+                pos.fill(0);
+                t.geometry.attributes.position.needsUpdate = true;
+            });
+        };
+        document.getElementById('slider-speed').oninput = (e) => { playbackSpeed = parseFloat(e.target.value); };
+
+        initThree();
+        initChart();
+        animate();
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+</html>
