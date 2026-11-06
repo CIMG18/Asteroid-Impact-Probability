@@ -1,263 +1,797 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Simulador Interactivo de Impacto de Asteroides</title>
-    <style>
-        body { margin: 0; overflow: hidden; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #050505; color: white; }
-        canvas { display: block; }
-        #ui { position: absolute; top: 20px; left: 20px; background: rgba(0,0,0,0.8); padding: 20px; border-radius: 10px; border: 1px solid #444; width: 300px; pointer-events: auto; }
-        .control-group { margin-bottom: 15px; }
-        label { display: block; font-size: 12px; color: #aaa; margin-bottom: 5px; }
-        input[type="range"] { width: 100%; cursor: pointer; }
-        .btn-row { display: flex; gap: 10px; margin-bottom: 15px; }
-        button { flex: 1; padding: 8px; cursor: pointer; background: #333; color: white; border: 1px solid #666; border-radius: 4px; transition: 0.2s; }
-        button:hover { background: #555; }
-        button.primary { background: #2a52be; border-color: #4a62be; }
-        #energy-chart { position: absolute; bottom: 20px; right: 20px; background: rgba(0,0,0,0.8); padding: 15px; border-radius: 10px; border: 1px solid #444; width: 400px; height: 200px; }
-        #file-input-container { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; background: rgba(0,0,0,0.9); padding: 40px; border-radius: 20px; border: 2px dashed #666; z-index: 100; }
-        .hidden { display: none !important; }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Simulación de Impacto de Asteroides — N-Cuerpos + Monte Carlo</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #04080f;
+      color: #c9d1d9;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      font-size: 14px;
+      display: flex;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    /* ── LEFT PANEL ── */
+    #sidebar {
+      width: 300px;
+      min-width: 300px;
+      background: #0d1117;
+      border-right: 1px solid #21262d;
+      display: flex;
+      flex-direction: column;
+      overflow-y: auto;
+      z-index: 10;
+    }
+
+    #sidebar h1 {
+      font-size: 13px;
+      font-weight: 600;
+      color: #58a6ff;
+      padding: 16px 16px 0;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    .section {
+      padding: 14px 16px;
+      border-bottom: 1px solid #21262d;
+    }
+    .section h2 {
+      font-size: 11px;
+      font-weight: 600;
+      color: #8b949e;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 10px;
+    }
+
+    /* controls */
+    .btn-row { display: flex; gap: 8px; }
+    button {
+      flex: 1;
+      padding: 7px 10px;
+      background: #161b22;
+      color: #c9d1d9;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 12px;
+      transition: background 0.15s, border-color 0.15s;
+    }
+    button:hover { background: #21262d; border-color: #58a6ff; }
+    button.active { background: #1f6feb; border-color: #58a6ff; color: #fff; }
+
+    .control-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-top: 10px;
+    }
+    .control-row label { font-size: 12px; color: #8b949e; }
+    .control-row span  { font-size: 12px; color: #c9d1d9; min-width: 32px; text-align: right; }
+    input[type="range"] {
+      flex: 1; margin: 0 10px;
+      accent-color: #58a6ff;
+      cursor: pointer;
+    }
+    input[type="number"] {
+      width: 64px;
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 4px;
+      color: #c9d1d9;
+      padding: 4px 6px;
+      font-size: 12px;
+    }
+
+    /* stats */
+    .stat-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+    .stat-box {
+      background: #161b22;
+      border: 1px solid #21262d;
+      border-radius: 6px;
+      padding: 8px 10px;
+    }
+    .stat-box .label { font-size: 10px; color: #8b949e; text-transform: uppercase; letter-spacing: 0.05em; }
+    .stat-box .value { font-size: 16px; font-weight: 600; color: #58a6ff; margin-top: 2px; }
+    .stat-box .value.warn  { color: #f0883e; }
+    .stat-box .value.good  { color: #3fb950; }
+    .stat-box .value.hit   { color: #f85149; }
+
+    /* legend */
+    .legend-item {
+      display: flex; align-items: center; gap: 8px;
+      margin-bottom: 6px; font-size: 12px;
+    }
+    .dot {
+      width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0;
+    }
+
+    /* energy mini-chart */
+    #energy-canvas {
+      width: 100%; height: 100px;
+      background: #161b22;
+      border: 1px solid #21262d;
+      border-radius: 6px;
+      display: block;
+    }
+    .chart-label {
+      font-size: 10px; color: #8b949e;
+      display: flex; justify-content: space-between;
+      margin-top: 4px;
+    }
+    .chart-label span { display: inline-flex; align-items: center; gap: 4px; }
+    .chip { width: 8px; height: 2px; border-radius: 1px; display: inline-block; }
+
+    /* formula box */
+    .formula {
+      background: #161b22;
+      border: 1px solid #21262d;
+      border-radius: 6px;
+      padding: 8px 10px;
+      font-family: 'Courier New', monospace;
+      font-size: 11px;
+      color: #a5d6ff;
+      line-height: 1.7;
+      margin-top: 6px;
+    }
+
+    /* ── CANVAS ── */
+    #canvas-wrap {
+      flex: 1;
+      position: relative;
+      overflow: hidden;
+    }
+    canvas#sim {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+
+    /* overlay top-right */
+    #overlay {
+      position: absolute;
+      top: 14px; right: 14px;
+      display: flex; flex-direction: column; gap: 6px;
+      pointer-events: none;
+    }
+    .badge {
+      background: rgba(13,17,23,0.85);
+      border: 1px solid #21262d;
+      border-radius: 6px;
+      padding: 5px 10px;
+      font-size: 11px;
+      color: #8b949e;
+      backdrop-filter: blur(4px);
+    }
+    .badge strong { color: #c9d1d9; }
+
+    #impact-flash {
+      position: absolute;
+      inset: 0;
+      background: rgba(248, 81, 73, 0.18);
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.4s;
+    }
+  </style>
 </head>
 <body>
 
-    <div id="file-input-container">
-        <h2>Cargar Datos de Simulación</h2>
-        <p>Por favor, selecciona el archivo <code>trajectories.csv</code> generado por el programa en C.</p>
-        <input type="file" id="csv-file" accept=".csv">
+<!-- ══════════ SIDEBAR ══════════ -->
+<div id="sidebar">
+  <h1>🌌 Asteroid Impact</h1>
+
+  <!-- CONTROLES -->
+  <div class="section">
+    <h2>Simulación</h2>
+    <div class="btn-row">
+      <button id="btn-play" class="active">⏸ Pausar</button>
+      <button id="btn-reset">↺ Reset</button>
     </div>
-
-    <div id="ui" class="hidden">
-        <h3>Control de Simulación</h3>
-        <div class="btn-row">
-            <button id="btn-toggle" class="primary">Pausar</button>
-            <button id="btn-reset">Reset</button>
-        </div>
-        <div class="control-group">
-            <label>Velocidad de Reproducción</label>
-            <input type="range" id="slider-speed" min="0.1" max="5" step="0.1" value="1">
-        </div>
-        <div id="stats" style="font-size: 13px; line-height: 1.6;">
-            <div>Paso: <span id="stat-step">0</span></div>
-            <div>Tierra: <span id="stat-dist">0</span> km (promedio)</div>
-        </div>
+    <div class="control-row" style="margin-top:12px;">
+      <label>Velocidad</label>
+      <input type="range" id="sl-speed" min="0.5" max="20" step="0.5" value="4">
+      <span id="lbl-speed">4×</span>
     </div>
-
-    <div id="energy-chart" class="hidden">
-        <canvas id="chart-canvas"></canvas>
+    <div class="control-row">
+      <label>N asteroides</label>
+      <input type="number" id="inp-n" value="80" min="10" max="400" step="10">
     </div>
+    <div class="control-row">
+      <label>Incertidumbre pos.</label>
+      <input type="range" id="sl-upos" min="0" max="5" step="0.5" value="1.5">
+      <span id="lbl-upos">1.5 AU×10⁻³</span>
+    </div>
+    <div class="control-row">
+      <label>Incertidumbre vel.</label>
+      <input type="range" id="sl-uvel" min="0" max="5" step="0.5" value="1.5">
+      <span id="lbl-uvel">1.5 km/s</span>
+    </div>
+  </div>
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- STATS -->
+  <div class="section">
+    <h2>Diagnósticos</h2>
+    <div class="stat-grid">
+      <div class="stat-box">
+        <div class="label">Día simulado</div>
+        <div class="value" id="st-day">0</div>
+      </div>
+      <div class="stat-box">
+        <div class="label">Impactos</div>
+        <div class="value hit" id="st-hits">0</div>
+      </div>
+      <div class="stat-box">
+        <div class="label">Prob. impacto</div>
+        <div class="value" id="st-prob">0.00%</div>
+      </div>
+      <div class="stat-box">
+        <div class="label">Virial Q = 2K/|U|</div>
+        <div class="value good" id="st-virial">—</div>
+      </div>
+      <div class="stat-box" style="grid-column:span 2;">
+        <div class="label">Energía total (relativo a E₀)</div>
+        <div class="value good" id="st-energy">0.000%</div>
+      </div>
+    </div>
+    <!-- mini energy chart -->
+    <canvas id="energy-canvas" style="margin-top:10px;"></canvas>
+    <div class="chart-label">
+      <span><span class="chip" style="background:#f0883e;"></span>Cinética K</span>
+      <span><span class="chip" style="background:#58a6ff;"></span>Potencial U</span>
+      <span><span class="chip" style="background:#3fb950;"></span>Total E</span>
+    </div>
+  </div>
 
-    <script>
-        let scene, camera, renderer, controls;
-        let bodies = {}, meteors = [], trails = [];
-        let data = null;
-        let currentStep = 0;
-        let isPlaying = true;
-        let playbackSpeed = 1;
-        let energyChart;
+  <!-- LEYENDA -->
+  <div class="section">
+    <h2>Leyenda</h2>
+    <div class="legend-item"><div class="dot" style="background:#ffe066;width:14px;height:14px;"></div>Sol</div>
+    <div class="legend-item"><div class="dot" style="background:#4d9de0;"></div>Tierra</div>
+    <div class="legend-item"><div class="dot" style="background:#aaaaaa;width:6px;height:6px;"></div>Luna</div>
+    <div class="legend-item"><div class="dot" style="background:#ffffff;opacity:0.7;"></div>Asteroide (activo)</div>
+    <div class="legend-item"><div class="dot" style="background:#f85149;"></div>Asteroide (impacto)</div>
+    <div class="legend-item"><div class="dot" style="background:#3fb950;"></div>Asteroide (alejándose)</div>
+  </div>
 
-        const SCALE = 1e-9;
-        const SUN_POS = {x: 0, y: 0, z: 0};
-        const EARTH_BASE_POS = {x: 1.496e11, y: 0, z: 0};
-        const MOON_BASE_POS = {x: 3.844e8, y: 0, z: 0};
+  <!-- FÍSICA -->
+  <div class="section">
+    <h2>Modelo físico</h2>
+    <div class="formula">
+      aᵢ = G·∑ mⱼ·(rⱼ−rᵢ) / |rⱼ−rᵢ|³<br><br>
+      Verlet de velocidades:<br>
+      r(t+Δt) = r + v·Δt + ½a·Δt²<br>
+      v(t+Δt) = v + ½(a+a')·Δt<br><br>
+      U = −G·∑ᵢ﹤ⱼ mᵢmⱼ/rᵢⱼ<br>
+      Q = 2K / |U|  →  1 en equilibrio
+    </div>
+  </div>
 
-        function initThree() {
-            scene = new THREE.Scene();
-            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-            renderer = new THREE.WebGLRenderer({ antialias: true });
-            renderer.setSize(window.innerWidth, window.innerHeight);
-            document.body.appendChild(renderer.domElement);
+  <!-- UNIDADES -->
+  <div class="section" style="border-bottom:none;">
+    <h2>Unidades</h2>
+    <div style="font-size:11px;color:#8b949e;line-height:1.8;">
+      Longitud: UA (1 UA = 1.496×10¹¹ m)<br>
+      Tiempo: días (1 día = 86 400 s)<br>
+      Masa: masas solares (M☉)<br>
+      G = 2.959×10⁻⁴ UA³/(M☉·día²)
+    </div>
+  </div>
+</div>
 
-            controls = new THREE.OrbitControls(camera, renderer.domElement);
-            camera.position.set(200, 100, 200);
-            controls.update();
+<!-- ══════════ CANVAS ══════════ -->
+<div id="canvas-wrap">
+  <canvas id="sim"></canvas>
+  <div id="overlay">
+    <div class="badge">Scroll: zoom &nbsp;·&nbsp; Drag: pan</div>
+    <div class="badge" id="badge-t">t = <strong>0</strong> días</div>
+  </div>
+  <div id="impact-flash"></div>
+</div>
 
-            scene.add(new THREE.AmbientLight(0x404040));
-            const sunLight = new THREE.PointLight(0xffffff, 2, 1000);
-            scene.add(sunLight);
+<script>
+// ─────────────────────────────────────────────────────────────────────────────
+//  CONSTANTES (unidades: UA, días, masas solares)
+// ─────────────────────────────────────────────────────────────────────────────
+const G_SIM  = 2.959122e-4;   // UA³ / (M☉ · día²)
+const AU     = 1.496e11;       // metros por UA (solo para referencia, no se usa aquí)
+const M_SUN  = 1.0;            // masas solares
+const M_EARTH= 3.003e-6;       // masas solares
+const M_MOON = 3.694e-8;       // masas solares
+const R_EARTH_AU = 4.259e-5;   // radio terrestre en UA
 
-            const boxSize = 300;
-            const boxGeo = new THREE.BoxGeometry(boxSize, boxSize, boxSize);
-            const edges = new THREE.EdgesGeometry(boxGeo);
-            scene.add(new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0x444444 })));
-            scene.add(new THREE.AxesHelper(150));
+// Condiciones iniciales JPL DE421 (21-oct-2026, plano eclíptica)
+//   Posiciones en UA desde centro de masa, velocidades en UA/día
+const IC_BODIES = [
+  { name:'Sol',    mass: M_SUN,   x:  0,          y:  0,          vx:  0,          vy:  0,         color:'#ffe066', r: 14 },
+  { name:'Tierra', mass: M_EARTH, x:  0.99543,     y:  0,          vx:  0,          vy:  0.017202,  color:'#4d9de0', r:  6 },
+  { name:'Luna',   mass: M_MOON,  x:  0.99543+0.00261, y: 0,       vx:  0,          vy:  0.017202+0.000232, color:'#aaaaaa', r: 2 },
+];
 
-            createBody('Sol', SUN_POS, 0xffff00, 10);
-            createBody('Tierra', EARTH_BASE_POS, 0x2255ff, 8); // Tierra más grande
-            createBody('Luna', {x:0, y:0, z:0}, 0xaaaaaa, 1);
-        }
+// Condición base del asteroide (aprox. ~0.94 UA del Sol, acercándose)
+const AST_BASE = { x: -0.94, y: 0.08, vx: 0.002, vy: 0.0165 };
 
-        function createBody(name, pos, color, size) {
-            const geo = new THREE.SphereGeometry(size, 32, 32);
-            const mat = new THREE.MeshPhongMaterial({ color: color });
-            const mesh = new THREE.Mesh(geo, mat);
-            mesh.position.set(pos.x * SCALE, pos.y * SCALE, pos.z * SCALE);
-            scene.add(mesh);
-            bodies[name] = mesh;
-        }
+// ─────────────────────────────────────────────────────────────────────────────
+//  ESTADO GLOBAL
+// ─────────────────────────────────────────────────────────────────────────────
+let bodies   = [];   // [{name,mass,x,y,vx,vy,ax,ay,color,r}, ...]
+let asteroids= [];   // [{x,y,vx,vy,ax,ay,active,hit,trail:[{x,y}]}, ...]
+let N_AST    = 80;
+let U_POS    = 1.5e-3;  // UA
+let U_VEL    = 1.5/173.15; // km/s → UA/día  (1 UA/día = 1731.5 km/s)
+let dt       = 1.0;  // días por paso
+let speed    = 4;    // pasos por frame
+let isPlaying= true;
+let day      = 0;
+let impacts  = 0;
+let E0       = null;
+let energyHistory = [];  // [{K,U,E}]
 
-        async function loadCSV(file) {
-            const text = await file.text();
-            const lines = text.split('\n').slice(1);
-            const parsedData = [];
-            lines.forEach(line => {
-                if (!line.trim()) return;
-                const cols = line.split(',');
-                parsedData.push({
-                    sim_id: parseInt(cols[0]), step: parseInt(cols[1]),
-                    x: parseFloat(cols[2]), y: parseFloat(cols[3]), z: parseFloat(cols[4]),
-                    vx: parseFloat(cols[5]), vy: parseFloat(cols[6]), vz: parseFloat(cols[7]),
-                    ek: parseFloat(cols[8]), ep: parseFloat(cols[9]), etot: parseFloat(cols[10])
-                });
-            });
-            return parsedData;
-        }
+// camera
+let cam = { x: 0, y: 0, scale: 220, dragging: false, lastMx: 0, lastMy: 0 };
 
-        function initChart() {
-            const ctx = document.getElementById('chart-canvas').getContext('2d');
-            energyChart = new Chart(ctx, {
-                type: 'line',
-                data: {
-                    labels: [],
-                    datasets: [
-                        { label: 'Cinética', borderColor: 'rgb(255, 99, 132)', data: [], borderWidth: 1, pointRadius: 0 },
-                        { label: 'Potencial', borderColor: 'rgb(54, 162, 235)', data: [], borderWidth: 1, pointRadius: 0 },
-                        { label: 'Total', borderColor: 'rgb(255, 205, 86)', data: [], borderWidth: 2, pointRadius: 0 }
-                    ]
-                },
-                options: {
-                    responsive: true, maintainAspectRatio: false,
-                    scales: { x: { display: false }, y: { ticks: { color: '#aaa' }, grid: { color: '#333' } } },
-                    plugins: { legend: { labels: { color: 'white', boxWidth: 10 } } }
-                }
-            });
-        }
+// ─────────────────────────────────────────────────────────────────────────────
+//  CANVAS SETUP
+// ─────────────────────────────────────────────────────────────────────────────
+const canvas = document.getElementById('sim');
+const ctx    = canvas.getContext('2d');
+const ecv    = document.getElementById('energy-canvas');
+const ectx   = ecv.getContext('2d');
 
-        function animate() {
-            requestAnimationFrame(animate);
+function resize() {
+  const wrap = document.getElementById('canvas-wrap');
+  canvas.width  = wrap.clientWidth;
+  canvas.height = wrap.clientHeight;
+  ecv.width  = ecv.clientWidth;
+  ecv.height = ecv.clientHeight;
+}
+window.addEventListener('resize', resize);
+resize();
 
-            if (isPlaying && data) {
-                const simIds = [...new Set(data.map(d => d.sim_id))];
-                let totalDist = 0;
-                let count = 0;
+// ─────────────────────────────────────────────────────────────────────────────
+//  FÍSICA
+// ─────────────────────────────────────────────────────────────────────────────
+function randomNormal(mu, sigma) {
+  const u1 = Math.random() || 1e-15;
+  const u2 = Math.random();
+  return mu + sigma * Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+}
 
-                // Movimiento orbital de la Tierra y la Luna
-                const time = currentStep * 0.0172;
-                const earthX = EARTH_BASE_POS.x * Math.cos(time);
-                const earthY = EARTH_BASE_POS.x * Math.sin(time);
-                bodies['Tierra'].position.set(earthX * SCALE, earthY * SCALE, 0);
+function computeAccel(x, y, sourceBodies) {
+  let ax = 0, ay = 0;
+  for (const b of sourceBodies) {
+    const dx = b.x - x, dy = b.y - y;
+    const dist2 = dx*dx + dy*dy;
+    const dist  = Math.sqrt(dist2);
+    if (dist < 1e-10) continue;
+    const mag = G_SIM * b.mass / (dist2 * dist);
+    ax += mag * dx;
+    ay += mag * dy;
+  }
+  return { ax, ay };
+}
 
-                const moonX = earthX + MOON_BASE_POS.x * Math.cos(time * 13);
-                const moonY = earthY + MOON_BASE_POS.x * Math.sin(time * 13);
-                bodies['Luna'].position.set(moonX * SCALE, moonY * SCALE, 0);
+// Velocity Verlet para un punto (x,y,vx,vy) con cuerpos fuentes dados
+function verletPoint(p, sourceBodies, dt) {
+  // 1. nueva posición
+  const nx = p.x + p.vx*dt + 0.5*p.ax*dt*dt;
+  const ny = p.y + p.vy*dt + 0.5*p.ay*dt*dt;
+  // 2. nueva aceleración
+  const {ax: nax, ay: nay} = computeAccel(nx, ny, sourceBodies);
+  // 3. nueva velocidad
+  const nvx = p.vx + 0.5*(p.ax + nax)*dt;
+  const nvy = p.vy + 0.5*(p.ay + nay)*dt;
+  return { x: nx, y: ny, vx: nvx, vy: nvy, ax: nax, ay: nay };
+}
 
-                // Actualizar todos los meteoritos del enjambre
-                simIds.forEach((id, index) => {
-                    const simData = data.filter(d => d.sim_id === id);
-                    if (currentStep < simData.length) {
-                        const state = simData[currentStep];
-                        const pos = new THREE.Vector3(state.x * SCALE, state.y * SCALE, state.z * SCALE);
-                        meteors[index].position.copy(pos);
+// Velocity Verlet N-cuerpos (integra todos los bodies entre sí)
+function verletBodies(bds, dt) {
+  const n = bds.length;
+  // 1. guardar aceleraciones actuales (ya calculadas en el último paso)
+  // 2. avanzar posiciones
+  for (const b of bds) {
+    b.x += b.vx*dt + 0.5*b.ax*dt*dt;
+    b.y += b.vy*dt + 0.5*b.ay*dt*dt;
+  }
+  // 3. calcular nuevas aceleraciones
+  const newAcc = bds.map(() => ({ax:0, ay:0}));
+  for (let i = 0; i < n; i++) {
+    for (let j = 0; j < n; j++) {
+      if (i===j) continue;
+      const dx = bds[j].x - bds[i].x;
+      const dy = bds[j].y - bds[i].y;
+      const dist2 = dx*dx + dy*dy;
+      const dist  = Math.sqrt(dist2);
+      if (dist < 1e-12) continue;
+      const mag = G_SIM * bds[j].mass / (dist2 * dist);
+      newAcc[i].ax += mag * dx;
+      newAcc[i].ay += mag * dy;
+    }
+  }
+  // 4. actualizar velocidades
+  for (let i = 0; i < n; i++) {
+    bds[i].vx += 0.5*(bds[i].ax + newAcc[i].ax)*dt;
+    bds[i].vy += 0.5*(bds[i].ay + newAcc[i].ay)*dt;
+    bds[i].ax  = newAcc[i].ax;
+    bds[i].ay  = newAcc[i].ay;
+  }
+}
 
-                        // Actualizar estela (Trail)
-                        const positions = trails[index].geometry.attributes.position.array;
-                        for (let i = 0; i < positions.length - 3; i++) {
-                            positions[i] = positions[i + 3];
-                        }
-                        positions[positions.length - 3] = pos.x;
-                        positions[positions.length - 2] = pos.y;
-                        positions[positions.length - 1] = pos.z;
-                        trails[index].geometry.attributes.position.needsUpdate = true;
+function computeEnergies() {
+  // Cinética: solo asteroides activos
+  let K = 0;
+  for (const a of asteroids) {
+    if (!a.active) continue;
+    const v2 = a.vx*a.vx + a.vy*a.vy;
+    K += 0.5 * 1e-15 * v2; // masa simbólica pequeña para no perturbar sistema
+  }
+  // Energía del sistema principal Sol-Tierra-Luna
+  for (const b of bodies) {
+    K += 0.5 * b.mass * (b.vx*b.vx + b.vy*b.vy);
+  }
+  // Potencial U del sistema principal (pares i<j)
+  let U = 0;
+  for (let i = 0; i < bodies.length; i++) {
+    for (let j = i+1; j < bodies.length; j++) {
+      const dx = bodies[j].x - bodies[i].x;
+      const dy = bodies[j].y - bodies[i].y;
+      const r  = Math.sqrt(dx*dx + dy*dy);
+      U -= G_SIM * bodies[i].mass * bodies[j].mass / r;
+    }
+  }
+  return { K, U, E: K+U };
+}
 
-                        const dist = Math.sqrt(Math.pow(state.x - earthX, 2) + Math.pow(state.y - earthY, 2) + Math.pow(state.z, 2));
-                        totalDist += dist;
-                        count++;
-                    }
-                });
+// ─────────────────────────────────────────────────────────────────────────────
+//  INIT / RESET
+// ─────────────────────────────────────────────────────────────────────────────
+function init() {
+  day = 0; impacts = 0; E0 = null; energyHistory = [];
 
-                document.getElementById('stat-step').innerText = currentStep;
-                document.getElementById('stat-dist').innerText = (count > 0 ? (totalDist / count / 1000) : 0).toFixed(2);
+  // Inicializar cuerpos principales con sus aceleraciones iniciales
+  bodies = IC_BODIES.map(b => {
+    const {ax, ay} = computeAccel(b.x, b.y,
+      IC_BODIES.filter(o => o !== b).map(o => ({x:o.x, y:o.y, mass:o.mass})));
+    return { ...b, ax, ay };
+  });
 
-                if (simIds.length > 0) {
-                    const refSim = data.filter(d => d.sim_id === simIds[0]);
-                    if (currentStep < refSim.length) {
-                        const state = refSim[currentStep];
-                        energyChart.data.labels.push(state.step);
-                        energyChart.data.datasets[0].data.push(state.ek);
-                        energyChart.data.datasets[1].data.push(state.ep);
-                        energyChart.data.datasets[2].data.push(state.etot);
-                        if (energyChart.data.labels.length > 100) {
-                            energyChart.data.labels.shift();
-                            energyChart.data.datasets.forEach(ds => ds.data.shift());
-                        }
-                        energyChart.update('none');
-                    }
-                }
-                currentStep++;
-            }
-            controls.update();
-            renderer.render(scene, camera);
-        }
+  // Inicializar enjambre de asteroides
+  asteroids = [];
+  for (let i = 0; i < N_AST; i++) {
+    const x  = AST_BASE.x + randomNormal(0, U_POS);
+    const y  = AST_BASE.y + randomNormal(0, U_POS);
+    const vx = AST_BASE.vx + randomNormal(0, U_VEL);
+    const vy = AST_BASE.vy + randomNormal(0, U_VEL);
+    const {ax, ay} = computeAccel(x, y, bodies);
+    asteroids.push({ x, y, vx, vy, ax, ay, active: true, hit: false, trail: [] });
+  }
 
-        document.getElementById('csv-file').onchange = async (e) => {
-            const file = e.target.files[0];
-            if (!file) return;
-            data = await loadCSV(file);
-            const simIds = [...new Set(data.map(d => d.sim_id))];
-            const metGeo = new THREE.SphereGeometry(0.5, 16, 16);
-            const metMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.6 });
+  updateStats();
+}
 
-            simIds.forEach((id, index) => {
-                const m = new THREE.Mesh(metGeo, metMat);
-                scene.add(m);
-                meteors.push(m);
+// ─────────────────────────────────────────────────────────────────────────────
+//  STEP
+// ─────────────────────────────────────────────────────────────────────────────
+const TRAIL_LEN = 60;
 
-                // Crear estela (Trail)
-                const trailMat = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.7 });
-                const trailPoints = new Float32Array(300 * 3); // Guardamos los últimos 100 puntos
-                const trailGeo = new THREE.BufferGeometry();
-                trailGeo.setAttribute('position', new THREE.BufferAttribute(trailPoints, 3));
-                const trail = new THREE.Line(trailGeo, trailMat);
-                scene.add(trail);
-                trails.push(trail);
-            });
+function step() {
+  // 1. Integrar cuerpos principales (N-cuerpos real)
+  verletBodies(bodies, dt);
 
-            document.getElementById('file-input-container').classList.add('hidden');
-            document.getElementById('ui').classList.remove('hidden');
-            document.getElementById('energy-chart').classList.remove('hidden');
-        };
+  // 2. Integrar asteroides activos
+  const earth = bodies[1];
+  for (const a of asteroids) {
+    if (!a.active) continue;
 
-        document.getElementById('btn-toggle').onclick = () => {
-            isPlaying = !isPlaying;
-            document.getElementById('btn-toggle').innerText = isPlaying ? 'Pausar' : 'Play';
-        };
-        document.getElementById('btn-reset').onclick = () => {
-            currentStep = 0;
-            energyChart.data.labels = [];
-            energyChart.data.datasets.forEach(ds => ds.data = []);
-            energyChart.update();
-            // Resetear estelas
-            trails.forEach(t => {
-                const pos = t.geometry.attributes.position.array;
-                pos.fill(0);
-                t.geometry.attributes.position.needsUpdate = true;
-            });
-        };
-        document.getElementById('slider-speed').oninput = (e) => { playbackSpeed = parseFloat(e.target.value); };
+    // guardar punto en estela
+    a.trail.push({ x: a.x, y: a.y });
+    if (a.trail.length > TRAIL_LEN) a.trail.shift();
 
-        initThree();
-        initChart();
-        animate();
-        window.addEventListener('resize', () => {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
-        });
-    </script>
+    const np = verletPoint(a, bodies, dt);
+    a.x = np.x; a.y = np.y;
+    a.vx = np.vx; a.vy = np.vy;
+    a.ax = np.ax; a.ay = np.ay;
+
+    // colisión con Tierra
+    const dx = a.x - earth.x, dy = a.y - earth.y;
+    if (Math.sqrt(dx*dx + dy*dy) <= R_EARTH_AU) {
+      a.active = false; a.hit = true;
+      impacts++;
+      flashImpact();
+    }
+
+    // alejar: si supera 3 UA del Sol, desactivar (salió del sistema)
+    if (a.x*a.x + a.y*a.y > 9) {
+      a.active = false;
+    }
+  }
+
+  day += dt;
+
+  // Energía diagnóstico (cada 5 pasos para rendimiento)
+  if (day % 5 < dt) {
+    const en = computeEnergies();
+    if (E0 === null) E0 = en.E;
+    energyHistory.push(en);
+    if (energyHistory.length > 200) energyHistory.shift();
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  RENDER
+// ─────────────────────────────────────────────────────────────────────────────
+function toScreen(x, y) {
+  const cx = canvas.width  / 2 + cam.x;
+  const cy = canvas.height / 2 + cam.y;
+  return { sx: cx + x * cam.scale, sy: cy - y * cam.scale };
+}
+
+function drawStars() {
+  // fondo espacial estático (generado una vez)
+  if (!drawStars._buf) {
+    drawStars._buf = [];
+    for (let i = 0; i < 250; i++) {
+      drawStars._buf.push({
+        x: Math.random(), y: Math.random(),
+        r: Math.random() * 1.2,
+        a: 0.2 + Math.random() * 0.6
+      });
+    }
+  }
+  for (const s of drawStars._buf) {
+    ctx.beginPath();
+    ctx.arc(s.x * canvas.width, s.y * canvas.height, s.r, 0, Math.PI*2);
+    ctx.fillStyle = `rgba(255,255,255,${s.a})`;
+    ctx.fill();
+  }
+}
+
+function drawOrbitGuide(b, r_au) {
+  const {sx, sy} = toScreen(0, 0);  // centro (Sol en 0,0 aprox)
+  ctx.beginPath();
+  ctx.arc(sx, sy, r_au * cam.scale, 0, Math.PI*2);
+  ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+}
+
+function render() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // fondo
+  ctx.fillStyle = '#04080f';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  drawStars();
+
+  // guías de órbita
+  drawOrbitGuide(bodies[1], 0.99543);
+
+  // estelas de asteroides
+  for (const a of asteroids) {
+    if (a.trail.length < 2) continue;
+    const color = a.hit ? '#f85149' : a.active ? '#ffffff' : '#3fb950';
+    ctx.beginPath();
+    const p0 = toScreen(a.trail[0].x, a.trail[0].y);
+    ctx.moveTo(p0.sx, p0.sy);
+    for (let i = 1; i < a.trail.length; i++) {
+      const pt = toScreen(a.trail[i].x, a.trail[i].y);
+      ctx.lineTo(pt.sx, pt.sy);
+    }
+    ctx.strokeStyle = color;
+    ctx.globalAlpha = 0.35;
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+
+  // puntos de asteroides
+  for (const a of asteroids) {
+    const {sx, sy} = toScreen(a.x, a.y);
+    const color = a.hit ? '#f85149' : a.active ? '#ffffff' : '#3fb950';
+    ctx.beginPath();
+    ctx.arc(sx, sy, a.active ? 1.8 : 1.2, 0, Math.PI*2);
+    ctx.fillStyle = color;
+    ctx.globalAlpha = a.active ? 0.85 : 0.4;
+    ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+
+  // cuerpos principales
+  for (const b of bodies) {
+    const {sx, sy} = toScreen(b.x, b.y);
+    // halo suave
+    const grad = ctx.createRadialGradient(sx, sy, 0, sx, sy, b.r * 2.5);
+    grad.addColorStop(0, b.color + 'cc');
+    grad.addColorStop(1, b.color + '00');
+    ctx.beginPath();
+    ctx.arc(sx, sy, b.r * 2.5, 0, Math.PI*2);
+    ctx.fillStyle = grad;
+    ctx.fill();
+    // cuerpo
+    ctx.beginPath();
+    ctx.arc(sx, sy, b.r, 0, Math.PI*2);
+    ctx.fillStyle = b.color;
+    ctx.fill();
+    // etiqueta
+    ctx.fillStyle = '#8b949e';
+    ctx.font = '11px Segoe UI, system-ui, sans-serif';
+    ctx.fillText(b.name, sx + b.r + 4, sy + 4);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  MINI ENERGY CHART
+// ─────────────────────────────────────────────────────────────────────────────
+function drawEnergyChart() {
+  const w = ecv.width, h = ecv.height;
+  ectx.clearRect(0,0,w,h);
+  ectx.fillStyle = '#161b22';
+  ectx.fillRect(0,0,w,h);
+
+  if (energyHistory.length < 2) return;
+
+  const data = energyHistory;
+  const series = [
+    { key: 'K', color: '#f0883e' },
+    { key: 'U', color: '#58a6ff' },
+    { key: 'E', color: '#3fb950' },
+  ];
+
+  for (const s of series) {
+    const vals = data.map(d => d[s.key]);
+    const vmin = Math.min(...vals), vmax = Math.max(...vals);
+    const range = vmax - vmin || 1;
+
+    ectx.beginPath();
+    for (let i = 0; i < vals.length; i++) {
+      const px = (i / (vals.length - 1)) * w;
+      const py = h - ((vals[i] - vmin) / range) * (h - 8) - 4;
+      i === 0 ? ectx.moveTo(px, py) : ectx.lineTo(px, py);
+    }
+    ectx.strokeStyle = s.color;
+    ectx.lineWidth = 1.5;
+    ectx.stroke();
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  STATS UI
+// ─────────────────────────────────────────────────────────────────────────────
+function updateStats() {
+  const total = asteroids.length;
+  const active = asteroids.filter(a => a.active).length;
+  const prob = total > 0 ? (impacts / total * 100) : 0;
+
+  document.getElementById('st-day').textContent  = Math.round(day);
+  document.getElementById('st-hits').textContent = impacts;
+  document.getElementById('st-prob').textContent = prob.toFixed(2) + '%';
+  document.getElementById('badge-t').innerHTML   =
+    `t = <strong>${Math.round(day)}</strong> días`;
+
+  // Energía relativa
+  if (E0 !== null && energyHistory.length > 0) {
+    const last = energyHistory[energyHistory.length-1];
+    const dE = Math.abs((last.E - E0) / (E0 || 1)) * 100;
+    const el = document.getElementById('st-energy');
+    el.textContent = dE.toFixed(4) + '%';
+    el.className = 'value ' + (dE < 0.1 ? 'good' : dE < 1 ? 'warn' : 'hit');
+
+    // Virial
+    const Q = last.U !== 0 ? (2*last.K / Math.abs(last.U)).toFixed(3) : '—';
+    const vEl = document.getElementById('st-virial');
+    vEl.textContent = Q;
+    const qn = parseFloat(Q);
+    vEl.className = 'value ' + (Math.abs(qn - 1) < 0.3 ? 'good' : 'warn');
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  FLASH ON IMPACT
+// ─────────────────────────────────────────────────────────────────────────────
+let flashTimer = null;
+function flashImpact() {
+  const el = document.getElementById('impact-flash');
+  el.style.opacity = '1';
+  clearTimeout(flashTimer);
+  flashTimer = setTimeout(() => { el.style.opacity = '0'; }, 350);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  GAME LOOP
+// ─────────────────────────────────────────────────────────────────────────────
+function loop() {
+  if (isPlaying) {
+    for (let s = 0; s < speed; s++) step();
+    updateStats();
+    drawEnergyChart();
+  }
+  render();
+  requestAnimationFrame(loop);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  CONTROLES UI
+// ─────────────────────────────────────────────────────────────────────────────
+document.getElementById('btn-play').onclick = function() {
+  isPlaying = !isPlaying;
+  this.textContent = isPlaying ? '⏸ Pausar' : '▶ Play';
+  this.className   = isPlaying ? 'active' : '';
+};
+
+document.getElementById('btn-reset').onclick = () => {
+  N_AST  = parseInt(document.getElementById('inp-n').value) || 80;
+  U_POS  = parseFloat(document.getElementById('sl-upos').value) * 1e-3;
+  U_VEL  = parseFloat(document.getElementById('sl-uvel').value) / 173.15; // km/s → UA/día
+  init();
+};
+
+document.getElementById('sl-speed').oninput = function() {
+  speed = parseFloat(this.value);
+  document.getElementById('lbl-speed').textContent = speed + '×';
+};
+
+document.getElementById('sl-upos').oninput = function() {
+  document.getElementById('lbl-upos').textContent = this.value + ' AU×10⁻³';
+};
+document.getElementById('sl-uvel').oninput = function() {
+  document.getElementById('lbl-uvel').textContent = this.value + ' km/s';
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  PAN & ZOOM
+// ─────────────────────────────────────────────────────────────────────────────
+canvas.addEventListener('wheel', e => {
+  e.preventDefault();
+  const factor = e.deltaY < 0 ? 1.1 : 0.9;
+  cam.scale = Math.max(50, Math.min(2000, cam.scale * factor));
+}, { passive: false });
+
+canvas.addEventListener('mousedown', e => {
+  cam.dragging = true;
+  cam.lastMx = e.clientX; cam.lastMy = e.clientY;
+});
+window.addEventListener('mousemove', e => {
+  if (!cam.dragging) return;
+  cam.x += e.clientX - cam.lastMx;
+  cam.y += e.clientY - cam.lastMy;
+  cam.lastMx = e.clientX; cam.lastMy = e.clientY;
+});
+window.addEventListener('mouseup', () => { cam.dragging = false; });
+
+// touch
+canvas.addEventListener('touchstart', e => {
+  if (e.touches.length === 1) {
+    cam.dragging = true;
+    cam.lastMx = e.touches[0].clientX;
+    cam.lastMy = e.touches[0].clientY;
+  }
+}, { passive: true });
+canvas.addEventListener('touchmove', e => {
+  if (!cam.dragging || e.touches.length !== 1) return;
+  cam.x += e.touches[0].clientX - cam.lastMx;
+  cam.y += e.touches[0].clientY - cam.lastMy;
+  cam.lastMx = e.touches[0].clientX;
+  cam.lastMy = e.touches[0].clientY;
+}, { passive: true });
+canvas.addEventListener('touchend', () => { cam.dragging = false; });
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  ARRANQUE
+// ─────────────────────────────────────────────────────────────────────────────
+init();
+loop();
+</script>
 </body>
 </html>

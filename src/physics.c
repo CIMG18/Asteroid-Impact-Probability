@@ -50,6 +50,53 @@ void step_verlet(Vector3 *pos, Vector3 *vel, Body *bodies, int num_bodies, doubl
     *vel = vec_add(*vel, a_avg);
 }
 
+// Integra todos los cuerpos principales entre sí usando Velocity Verlet (N-cuerpos).
+// Calcula aceleraciones actuales, avanza posiciones, recalcula aceleraciones y promedia
+// para actualizar velocidades — igual que step_verlet pero aplicado a todos los pares.
+void step_verlet_bodies(Body *bodies, int num_bodies, double dt) {
+    // Arreglo temporal de aceleraciones actuales (tamaño máximo estático)
+    // Usamos VLA o un máximo razonable; 16 cuerpos es más que suficiente para este proyecto
+    Vector3 a_curr[16];
+    Vector3 a_next[16];
+
+    // 1. Calcular aceleración actual de cada cuerpo debida a los demás
+    for (int i = 0; i < num_bodies; i++) {
+        a_curr[i] = (Vector3){0, 0, 0};
+        for (int j = 0; j < num_bodies; j++) {
+            if (i == j) continue;
+            Vector3 r = vec_sub(bodies[j].pos, bodies[i].pos);
+            double dist = vec_norm(r);
+            double mag = (G * bodies[j].mass) / (dist * dist * dist);
+            a_curr[i] = vec_add(a_curr[i], vec_mult(r, mag));
+        }
+    }
+
+    // 2. Avanzar posiciones: r(t+dt) = r(t) + v(t)dt + 0.5*a(t)dt^2
+    for (int i = 0; i < num_bodies; i++) {
+        Vector3 dr = vec_add(vec_mult(bodies[i].vel, dt),
+                             vec_mult(a_curr[i], 0.5 * dt * dt));
+        bodies[i].pos = vec_add(bodies[i].pos, dr);
+    }
+
+    // 3. Recalcular aceleraciones en las nuevas posiciones
+    for (int i = 0; i < num_bodies; i++) {
+        a_next[i] = (Vector3){0, 0, 0};
+        for (int j = 0; j < num_bodies; j++) {
+            if (i == j) continue;
+            Vector3 r = vec_sub(bodies[j].pos, bodies[i].pos);
+            double dist = vec_norm(r);
+            double mag = (G * bodies[j].mass) / (dist * dist * dist);
+            a_next[i] = vec_add(a_next[i], vec_mult(r, mag));
+        }
+    }
+
+    // 4. Actualizar velocidades: v(t+dt) = v(t) + 0.5*(a(t) + a(t+dt))dt
+    for (int i = 0; i < num_bodies; i++) {
+        Vector3 a_avg = vec_mult(vec_add(a_curr[i], a_next[i]), 0.5 * dt);
+        bodies[i].vel = vec_add(bodies[i].vel, a_avg);
+    }
+}
+
 double compute_kinetic_energy(Vector3 vel, double mass) {
     double v2 = vel.x * vel.x + vel.y * vel.y + vel.z * vel.z;
     return 0.5 * mass * v2;

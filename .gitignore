@@ -1,0 +1,18 @@
+# Sistema
+.DS_Store
+
+# Compilados C
+src/*.o
+main
+
+# Datos generados por la simulación
+data/trajectories.csv
+
+# Python cache
+src/__pycache__/
+__pycache__/
+*.pyc
+*.pyo
+
+# Archivo con backtick erróneo
+visualizer.html`

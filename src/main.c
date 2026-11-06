@@ -25,14 +25,28 @@ double random_normal(double mu, double sigma) {
 int main() {
     srand(time(NULL));
 
-    // 1. Definir Cuerpos Celestes
-    Body bodies[3] = {
-        {"Sol",   MASS_SUN,   {0, 0, 0}},
-        {"Tierra", MASS_EARTH, {1.496e11, 0, 0}},
-        {"Luna",   MASS_MOON,   {1.496e11 + 3.844e8, 0, 0}}
+    // -------------------------------------------------------------------------
+    // 1. Condiciones iniciales de los cuerpos principales (S.I.)
+    //
+    // Tierra: órbita circular alrededor del Sol a 1 UA.
+    //   - velocidad orbital: v = sqrt(G*M_sol / r) ≈ 29 784 m/s en +Y
+    //
+    // Luna: posición relativa a la Tierra + 3.844e8 m en X,
+    //   velocidad orbital relativa a la Tierra: v = sqrt(G*M_tierra / r) ≈ 1 022 m/s en +Y
+    //   (se suma la velocidad de la Tierra para obtener velocidad heliocéntrica)
+    // -------------------------------------------------------------------------
+    double r_earth  = 1.496e11;               // distancia Sol-Tierra [m]
+    double r_moon   = 3.844e8;                // distancia Tierra-Luna [m]
+    double v_earth  = sqrt(G * MASS_SUN   / r_earth);   // ~29 784 m/s
+    double v_moon   = sqrt(G * MASS_EARTH / r_moon);    // ~1 022 m/s
+
+    Body ic[3] = {
+        {"Sol",    MASS_SUN,   {0,                   0, 0}, {0,                   0, 0}},
+        {"Tierra", MASS_EARTH, {r_earth,              0, 0}, {0,          v_earth,   0}},
+        {"Luna",   MASS_MOON,  {r_earth + r_moon,     0, 0}, {0,  v_earth + v_moon,  0}}
     };
 
-    // 2. Condiciones Base del Meteorito
+    // 2. Condiciones base del meteorito (aproximación a ~0.94 UA del Sol, acercándose)
     Vector3 base_pos = {1.4e11, 1e9, 0};
     Vector3 base_vel = {0, 30000, 0};
 
@@ -49,7 +63,11 @@ int main() {
     printf("Iniciando Montecarlo en C: %d simulaciones...\n", N_SIMULATIONS);
 
     for (int i = 0; i < N_SIMULATIONS; i++) {
-        // Muestreo aleatorio de condiciones iniciales
+        // Resetear cuerpos principales a condiciones iniciales en cada simulación
+        Body bodies[3];
+        for (int b = 0; b < 3; b++) bodies[b] = ic[b];
+
+        // Muestreo aleatorio de condiciones iniciales del meteorito
         Vector3 pos = {
             base_pos.x + random_normal(0, UNCERTAINTY_POS),
             base_pos.y + random_normal(0, UNCERTAINTY_POS),
@@ -62,10 +80,10 @@ int main() {
         };
 
         bool impacted = false;
-        double mass_meteorite = 1e10; // Masa arbitraria para el meteorito para cálculos de energía
+        double mass_meteorite = 1e10; // Masa arbitraria para cálculos de energía
 
         for (int step = 0; step < MAX_STEPS; step++) {
-            // Guardar trayectoria de cada 10 simulaciones para no llenar el disco
+            // Guardar trayectoria de 1 de cada 10 simulaciones para no llenar el disco
             if (i % 10 == 0) {
                 double ek = compute_kinetic_energy(vel, mass_meteorite);
                 double ep = compute_potential_energy(pos, bodies, 3, mass_meteorite);
@@ -73,6 +91,10 @@ int main() {
                         i, step, pos.x, pos.y, pos.z, vel.x, vel.y, vel.z, ek, ep, ek + ep);
             }
 
+            // Avanzar los cuerpos principales entre sí (N-cuerpos real)
+            step_verlet_bodies(bodies, 3, DT);
+
+            // Avanzar el meteorito bajo la gravedad de los cuerpos actualizados
             step_verlet(&pos, &vel, bodies, 3, DT);
 
             // Verificar colisión con la Tierra (bodies[1])
@@ -80,10 +102,8 @@ int main() {
             if (vec_norm(diff) <= RADIUS_EARTH) {
                 impacted = true;
                 break;
-                // El 'break' ha sido eliminado para que el meteorito siga volando
             }
         }
-
 
         if (impacted) impacts++;
 
