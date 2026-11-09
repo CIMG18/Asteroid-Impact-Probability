@@ -9,12 +9,12 @@
 
 // --- Configuración de la simulación ---
 #define N_SIMULATIONS 1000
-#define DT 86400.0        // 1 día en segundos
-#define MAX_STEPS 100     // 100 días de simulación
+#define DT 86400.0          // 1 día en segundos
+#define MAX_STEPS 365       // 365 días de simulación (~1 año)
 #define UNCERTAINTY_POS 1e6 // 1,000 km
 #define UNCERTAINTY_VEL 100 // 100 m/s
 
-// Función para generar números aleatorios en un rango normal (aproximación simple de Box-Muller)
+// Función para generar números aleatorios con distribución normal (Box-Muller)
 double random_normal(double mu, double sigma) {
     double u1 = (double)rand() / RAND_MAX;
     double u2 = (double)rand() / RAND_MAX;
@@ -22,8 +22,21 @@ double random_normal(double mu, double sigma) {
     return z0 * sigma + mu;
 }
 
-int main() {
-    srand(time(NULL));
+int main(int argc, char *argv[]) {
+    // -------------------------------------------------------------------------
+    // Semilla aleatoria:
+    //   ./main          → semilla basada en el tiempo (resultados distintos cada vez)
+    //   ./main 42       → semilla fija 42 (resultados 100% reproducibles)
+    // -------------------------------------------------------------------------
+    unsigned int seed;
+    if (argc >= 2) {
+        seed = (unsigned int)atoi(argv[1]);
+        printf("Semilla fija: %u (resultados reproducibles)\n", seed);
+    } else {
+        seed = (unsigned int)time(NULL);
+        printf("Semilla aleatoria: %u\n", seed);
+    }
+    srand(seed);
 
     // -------------------------------------------------------------------------
     // 1. Condiciones iniciales de los cuerpos principales (S.I.)
@@ -52,6 +65,11 @@ int main() {
 
     int impacts = 0;
 
+    // Variables para diagnóstico de conservación de energía (simulación 0 como referencia)
+    double E0_ref   = 0.0; // energía total inicial de la sim. de referencia
+    double E_max_err= 0.0; // máximo error relativo observado
+    double E_fin    = 0.0; // energía total final de la sim. de referencia
+
     // Abrir archivo para guardar trayectorias de algunos meteoritos (para visualización)
     FILE *fp = fopen("data/trajectories.csv", "w");
     if (fp == NULL) {
@@ -60,7 +78,8 @@ int main() {
     }
     fprintf(fp, "sim_id,step,x,y,z,vx,vy,vz,ek,ep,etot\n");
 
-    printf("Iniciando Montecarlo en C: %d simulaciones...\n", N_SIMULATIONS);
+    printf("Iniciando Montecarlo en C: %d simulaciones, %d dias cada una...\n",
+           N_SIMULATIONS, MAX_STEPS);
 
     for (int i = 0; i < N_SIMULATIONS; i++) {
         // Resetear cuerpos principales a condiciones iniciales en cada simulación
@@ -82,6 +101,11 @@ int main() {
         bool impacted = false;
         double mass_meteorite = 1e10; // Masa arbitraria para cálculos de energía
 
+        // Energía inicial de este meteorito (para diagnóstico en sim. 0)
+        double ek0 = compute_kinetic_energy(vel, mass_meteorite);
+        double ep0 = compute_potential_energy(pos, bodies, 3, mass_meteorite);
+        if (i == 0) E0_ref = ek0 + ep0;
+
         for (int step = 0; step < MAX_STEPS; step++) {
             // Guardar trayectoria de 1 de cada 10 simulaciones para no llenar el disco
             if (i % 10 == 0) {
@@ -89,6 +113,13 @@ int main() {
                 double ep = compute_potential_energy(pos, bodies, 3, mass_meteorite);
                 fprintf(fp, "%d,%d,%e,%e,%e,%e,%e,%e,%e,%e,%e\n",
                         i, step, pos.x, pos.y, pos.z, vel.x, vel.y, vel.z, ek, ep, ek + ep);
+
+                // Seguimiento del error de energía en la simulación 0
+                if (i == 0 && E0_ref != 0.0) {
+                    double err = fabs((ek + ep - E0_ref) / E0_ref);
+                    if (err > E_max_err) E_max_err = err;
+                    if (step == MAX_STEPS - 1) E_fin = ek + ep;
+                }
             }
 
             // Avanzar los cuerpos principales entre sí (N-cuerpos real)
@@ -115,10 +146,29 @@ int main() {
     fclose(fp);
 
     double probability = (double)impacts / N_SIMULATIONS;
-    printf("\n--- RESULTADOS FINALES ---\n");
-    printf("Impactos detectados: %d\n", impacts);
-    printf("Probabilidad de impacto: %.4f%%\n", probability * 100.0);
-    printf("Datos guardados en data/trajectories.csv\n");
+
+    printf("\n╔══════════════════════════════════════╗\n");
+    printf("║        RESULTADOS FINALES            ║\n");
+    printf("╠══════════════════════════════════════╣\n");
+    printf("║  Semilla usada       : %-14u ║\n", seed);
+    printf("║  Simulaciones        : %-14d ║\n", N_SIMULATIONS);
+    printf("║  Duracion por sim.   : %-10d dias ║\n", MAX_STEPS);
+    printf("╠══════════════════════════════════════╣\n");
+    printf("║  Impactos detectados : %-14d ║\n", impacts);
+    printf("║  Probabilidad        : %-13.4f%% ║\n", probability * 100.0);
+    printf("╠══════════════════════════════════════╣\n");
+    printf("║  CONSERVACION DE ENERGIA (sim. 0)    ║\n");
+    printf("║  E inicial : %+.6e J  ║\n", E0_ref);
+    printf("║  E final   : %+.6e J  ║\n", E_fin);
+    printf("║  Error max : %-13.6f%%  ║\n", E_max_err * 100.0);
+    if (E_max_err < 1e-4)
+        printf("║  Integrador: EXCELENTE (<0.01%%)     ║\n");
+    else if (E_max_err < 1e-2)
+        printf("║  Integrador: ACEPTABLE (<1.00%%)     ║\n");
+    else
+        printf("║  Integrador: REVISAR   (>1.00%%)     ║\n");
+    printf("╚══════════════════════════════════════╝\n");
+    printf("\nDatos guardados en data/trajectories.csv\n");
 
     return 0;
 }
