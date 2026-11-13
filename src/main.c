@@ -76,7 +76,8 @@ int main(int argc, char *argv[]) {
         perror("Error abriendo archivo de datos");
         return 1;
     }
-    fprintf(fp, "sim_id,step,x,y,z,vx,vy,vz,ek,ep,etot\n");
+    // Formato CSV extendido: incluye posición de Tierra y Luna para el visualizador
+    fprintf(fp, "sim_id,step,x,y,z,vx,vy,vz,ek,ep,etot,ex,ey,mx,my\n");
 
     printf("Iniciando Montecarlo en C: %d simulaciones, %d dias cada una...\n",
            N_SIMULATIONS, MAX_STEPS);
@@ -107,12 +108,17 @@ int main(int argc, char *argv[]) {
         if (i == 0) E0_ref = ek0 + ep0;
 
         for (int step = 0; step < MAX_STEPS; step++) {
-            // Guardar trayectoria de 1 de cada 10 simulaciones para no llenar el disco
+            // Guardar 1 de cada 10 simulaciones (asteroides) con posición de Tierra y Luna
             if (i % 10 == 0) {
                 double ek = compute_kinetic_energy(vel, mass_meteorite);
                 double ep = compute_potential_energy(pos, bodies, 3, mass_meteorite);
-                fprintf(fp, "%d,%d,%e,%e,%e,%e,%e,%e,%e,%e,%e\n",
-                        i, step, pos.x, pos.y, pos.z, vel.x, vel.y, vel.z, ek, ep, ek + ep);
+                fprintf(fp, "%d,%d,%e,%e,%e,%e,%e,%e,%e,%e,%e,%e,%e,%e,%e\n",
+                        i, step,
+                        pos.x, pos.y, pos.z,
+                        vel.x, vel.y, vel.z,
+                        ek, ep, ek + ep,
+                        bodies[1].pos.x, bodies[1].pos.y,   // Tierra x,y
+                        bodies[2].pos.x, bodies[2].pos.y);  // Luna  x,y
 
                 // Seguimiento del error de energía en la simulación 0
                 if (i == 0 && E0_ref != 0.0) {

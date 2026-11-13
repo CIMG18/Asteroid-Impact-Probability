@@ -1,6 +1,6 @@
 # Asteroid Impact Probability
 
-Simulación Monte Carlo en C puro para estimar la **probabilidad de impacto de un asteroide con la Tierra**. Las órbitas de los asteroides nunca se conocen con precisión perfecta — las observaciones telescópicas tienen error de medición. En lugar de calcular una única trayectoria determinista, el proyecto muestrea miles de trayectorias plausibles consistentes con esa incertidumbre y cuenta cuántas de ellas intersectan la Tierra.
+Simulación Monte Carlo en C para estimar la **probabilidad de impacto de un asteroide con la Tierra**. Las órbitas de los asteroides nunca se conocen con precisión perfecta — las observaciones telescópicas tienen error de medición. En lugar de calcular una única trayectoria determinista, el proyecto muestrea miles de trayectorias plausibles consistentes con esa incertidumbre y cuenta cuántas de ellas intersectan la Tierra.
 
 ---
 
@@ -42,9 +42,9 @@ Asteroid-Impact-Probability/
 
 El sistema está compuesto por **Sol, Tierra, Luna y el asteroide**. La aceleración gravitacional sobre cualquier cuerpo `i` debida a los demás es:
 
-```
-aᵢ = G · Σⱼ≠ᵢ  mⱼ · (rⱼ − rᵢ) / |rⱼ − rᵢ|³
-```
+$$
+\mathbf{a}_i = G \sum_{j \neq i} m_j \, \frac{\mathbf{r}_j - \mathbf{r}_i}{\left|\mathbf{r}_j - \mathbf{r}_i\right|^3}
+$$
 
 Sol, Tierra y Luna se integran **entre sí** en cada paso de tiempo usando N-cuerpos completo (`step_verlet_bodies`). El asteroide se integra bajo la gravedad de los tres cuerpos actualizados (`step_verlet`).
 
@@ -52,11 +52,15 @@ Sol, Tierra y Luna se integran **entre sí** en cada paso de tiempo usando N-cue
 
 Cada paso de tiempo `Δt = 1 día (86 400 s)` aplica el esquema simétrico de Verlet:
 
-```
-r(t+Δt) = r(t) + v(t)·Δt + ½·a(t)·Δt²     — nueva posición
-a(t+Δt) = calcular con la nueva r            — nueva aceleración
-v(t+Δt) = v(t) + ½·[a(t) + a(t+Δt)]·Δt    — nueva velocidad
-```
+
+$$
+\begin{aligned}
+\mathbf{r}(t + \Delta t) &= \mathbf{r}(t) + \mathbf{v}(t)\,\Delta t + \tfrac{1}{2}\,\mathbf{a}(t)\,\Delta t^2 && \text{(nueva posición)} \\
+\mathbf{a}(t + \Delta t) &= \mathbf{a}\big(\mathbf{r}(t + \Delta t)\big) && \text{(nueva aceleración)} \\
+\mathbf{v}(t + \Delta t) &= \mathbf{v}(t) + \tfrac{1}{2}\,\big[\mathbf{a}(t) + \mathbf{a}(t + \Delta t)\big]\,\Delta t && \text{(nueva velocidad)}
+\end{aligned}
+$$
+
 
 El promedio de aceleraciones en el paso de velocidad es lo que distingue a Velocity Verlet de métodos más simples: **conserva la energía** a largo plazo sin disipación artificial.
 
@@ -72,30 +76,22 @@ Las velocidades orbitales se calculan analíticamente a partir de la condición 
 
 Cada simulación Monte Carlo **resetea los cuerpos a estas condiciones iniciales**, garantizando que el sistema físico de fondo es idéntico para todas las muestras.
 
-### Diagnóstico de conservación de energía
-
-El programa evalúa el error relativo de energía total `|ΔE/E₀|` a lo largo de la simulación de referencia (muestra 0) y reporta:
-
-- `< 0.01%` → **EXCELENTE** — el integrador funciona con alta precisión.
-- `< 1.00%` → **ACEPTABLE** — deriva pequeña, esperada con Δt = 1 día.
-- `> 1.00%` → **REVISAR** — el paso de tiempo es demasiado grande.
-
----
-
 ## Método Monte Carlo
 
 La incertidumbre de medición del telescopio se modela como una distribución gaussiana sobre la posición y velocidad base del asteroide. Para cada simulación `i` de `N = 1000`:
 
-```
-posᵢ = base_pos + N(0, σ_pos)   [σ_pos = 1,000 km]
-velᵢ = base_vel + N(0, σ_vel)   [σ_vel = 100 m/s]
-```
+$$
+\begin{aligned}
+\mathbf{r}_i &= \mathbf{r}_{\text{base}} + \mathcal{N}\!\left(\mathbf{0},\, \sigma_{\text{pos}}^2 \mathbf{I}\right), & \sigma_{\text{pos}} &= 1\,000\ \text{km} \\
+\mathbf{v}_i &= \mathbf{v}_{\text{base}} + \mathcal{N}\!\left(\mathbf{0},\, \sigma_{\text{vel}}^2 \mathbf{I}\right), & \sigma_{\text{vel}} &= 100\ \text{m/s}
+\end{aligned}
+$$
 
 Los números aleatorios se generan con el método **Box-Muller**:
 
-```
-z = √(−2 ln u₁) · cos(2π u₂)    donde u₁, u₂ ~ Uniforme(0,1)
-```
+$$
+z = \sqrt{-2 \ln u_1}\,\cos\!\left(2\pi u_2\right), \qquad u_1, u_2 \sim \mathcal{U}(0, 1)
+$$
 
 Cada muestra se integra durante **365 pasos (1 año)**. Si la distancia entre el asteroide y la Tierra cae por debajo de `RADIUS_EARTH = 6.371×10⁶ m`, se registra un impacto.
 
@@ -103,23 +99,6 @@ La probabilidad final es:
 
 ```
 P(impacto) = N_impactos / N_simulaciones
-```
-
-
-### Ejecutar
-
-```bash
-# Semilla aleatoria — resultados distintos en cada ejecución
-./main
-
-# Semilla fija — resultados 100% reproducibles (útil para comparar y presentar)
-./main 42
-```
-
-### Limpiar binarios
-
-```bash
-make clean
 ```
 
 ---
@@ -135,12 +114,12 @@ Progreso: 100/1000 simulaciones completadas.
 ╔══════════════════════════════════════╗
 ║        RESULTADOS FINALES            ║
 ╠══════════════════════════════════════╣
-║  Semilla usada       : 42             ║
-║  Simulaciones        : 1000           ║
-║  Duracion por sim.   : 365        dias ║
+║  Semilla usada       : 42            ║
+║  Simulaciones        : 1000          ║
+║  Duracion por sim.   : 365      dias ║
 ╠══════════════════════════════════════╣
-║  Impactos detectados : 0              ║
-║  Probabilidad        : 0.0000       % ║
+║  Impactos detectados : 0             ║
+║  Probabilidad        : 0.0000 %      ║
 ╠══════════════════════════════════════╣
 ║  CONSERVACION DE ENERGIA (sim. 0)    ║
 ║  E inicial : -4.984186e+18 J         ║
@@ -156,26 +135,11 @@ Además genera `data/trajectories.csv` con el estado completo (posición, veloci
 
 ## Visualizador interactivo
 
-El archivo [`visualizer.html`](visualizer.html) es un visualizador autocontenido que **no requiere el CSV** — implementa el mismo integrador Velocity Verlet N-cuerpos directamente en JavaScript y corre la simulación en el navegador.
+El archivo [`visualizer.html`](visualizer.html) es un visualizador autocontenido que puede usar los calculos contenidos en el CSV **O** implementar el mismo integrador Velocity Verlet N-cuerpos directamente en JavaScript y correr la simulación en el navegador.
 
 ```bash
 open visualizer.html
 ```
-
-### Características
-
-| Funcionalidad | Descripción |
-|---|---|
-| N-cuerpos en JS | Sol, Tierra y Luna se mueven con física real |
-| Enjambre Monte Carlo | Hasta 400 asteroides con incertidumbre gaussiana ajustable |
-| Diagnósticos en vivo | Energía cinética K, potencial U, total E; Virial Q = 2K/\|U\| |
-| Controles | Play/Pausa, Reset, velocidad (0.5×–20×), sliders de incertidumbre |
-| Cámara | Scroll para zoom, drag para pan |
-| Colores | Blanco = activo, Rojo = impacto, Verde = se alejó |
-
-
-
----
 
 ## Parámetros configurables
 

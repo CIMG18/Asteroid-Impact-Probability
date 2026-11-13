@@ -192,6 +192,24 @@
 <div id="sidebar">
   <h1>🌌 Asteroid Impact</h1>
 
+  <!-- MODO -->
+  <div class="section">
+    <h2>Fuente de datos</h2>
+    <div class="btn-row">
+      <button id="btn-mode-js" class="active">⚡ JS (tiempo real)</button>
+      <button id="btn-mode-csv">📂 CSV (programa C)</button>
+    </div>
+    <!-- Zona de carga CSV (oculta por defecto) -->
+    <div id="csv-zone" style="display:none;margin-top:10px;">
+      <label style="font-size:11px;color:#8b949e;display:block;margin-bottom:6px;">
+        Selecciona <code style="color:#a5d6ff;">data/trajectories.csv</code>
+      </label>
+      <input type="file" id="csv-input" accept=".csv"
+             style="font-size:11px;color:#c9d1d9;width:100%;">
+      <div id="csv-info" style="font-size:11px;color:#3fb950;margin-top:6px;display:none;"></div>
+    </div>
+  </div>
+
   <!-- CONTROLES -->
   <div class="section">
     <h2>Simulación</h2>
@@ -204,25 +222,45 @@
       <input type="range" id="sl-speed" min="0.5" max="20" step="0.5" value="4">
       <span id="lbl-speed">4×</span>
     </div>
-    <div class="control-row">
-      <label>N asteroides</label>
-      <input type="number" id="inp-n" value="80" min="10" max="400" step="10">
-    </div>
-    <div class="control-row">
-      <label>Incertidumbre pos.</label>
-      <input type="range" id="sl-upos" min="0" max="5" step="0.5" value="1.5">
-      <span id="lbl-upos">1.5 AU×10⁻³</span>
-    </div>
-    <div class="control-row">
-      <label>Incertidumbre vel.</label>
-      <input type="range" id="sl-uvel" min="0" max="5" step="0.5" value="1.5">
-      <span id="lbl-uvel">1.5 km/s</span>
+    <!-- Controles JS (ocultos en modo CSV) -->
+    <div id="js-controls">
+      <div class="control-row">
+        <label>N asteroides</label>
+        <input type="number" id="inp-n" value="80" min="10" max="400" step="10">
+      </div>
+      <div class="control-row">
+        <label>Incertidumbre pos.</label>
+        <input type="range" id="sl-upos" min="0" max="5" step="0.5" value="1.5">
+        <span id="lbl-upos">1.5 AU×10⁻³</span>
+      </div>
+      <div class="control-row">
+        <label>Incertidumbre vel.</label>
+        <input type="range" id="sl-uvel" min="0" max="5" step="0.5" value="1.5">
+        <span id="lbl-uvel">1.5 km/s</span>
+      </div>
     </div>
   </div>
 
   <!-- STATS -->
   <div class="section">
     <h2>Diagnósticos</h2>
+    <!-- Info del programa C (solo en modo CSV) -->
+    <div id="c-info" style="display:none;margin-bottom:10px;">
+      <div class="stat-grid">
+        <div class="stat-box" style="grid-column:span 2;">
+          <div class="label">Fuente</div>
+          <div class="value" style="font-size:12px;color:#a5d6ff;" id="st-source">—</div>
+        </div>
+        <div class="stat-box">
+          <div class="label">Prob. C (real)</div>
+          <div class="value hit" id="st-prob-c">—</div>
+        </div>
+        <div class="stat-box">
+          <div class="label">Sims. totales</div>
+          <div class="value" id="st-sims-c">—</div>
+        </div>
+      </div>
+    </div>
     <div class="stat-grid">
       <div class="stat-box">
         <div class="label">Día simulado</div>
@@ -709,32 +747,12 @@ function flashImpact() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  GAME LOOP
-// ─────────────────────────────────────────────────────────────────────────────
-function loop() {
-  if (isPlaying) {
-    for (let s = 0; s < speed; s++) step();
-    updateStats();
-    drawEnergyChart();
-  }
-  render();
-  requestAnimationFrame(loop);
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
 //  CONTROLES UI
 // ─────────────────────────────────────────────────────────────────────────────
 document.getElementById('btn-play').onclick = function() {
   isPlaying = !isPlaying;
   this.textContent = isPlaying ? '⏸ Pausar' : '▶ Play';
   this.className   = isPlaying ? 'active' : '';
-};
-
-document.getElementById('btn-reset').onclick = () => {
-  N_AST  = parseInt(document.getElementById('inp-n').value) || 80;
-  U_POS  = parseFloat(document.getElementById('sl-upos').value) * 1e-3;
-  U_VEL  = parseFloat(document.getElementById('sl-uvel').value) / 173.15; // km/s → UA/día
-  init();
 };
 
 document.getElementById('sl-speed').oninput = function() {
@@ -788,9 +806,217 @@ canvas.addEventListener('touchmove', e => {
 canvas.addEventListener('touchend', () => { cam.dragging = false; });
 
 // ─────────────────────────────────────────────────────────────────────────────
+//  MODO CSV — carga y reproducción de datos del programa C
+// ─────────────────────────────────────────────────────────────────────────────
+const AU_M = 1.496e11;  // metros -> UA
+
+let csvMode    = false;
+let csvFrames  = [];
+let csvStep    = 0;
+let csvEarthPos= [];
+let csvMoonPos = [];
+let csvImpacts = 0;
+let csvTotalSims = 0;
+
+function parseCSV(text) {
+  const lines = text.trim().split('\n');
+  const header = lines[0].split(',');
+  const iSimId = header.indexOf('sim_id');
+  const iStep  = header.indexOf('step');
+  const iX     = header.indexOf('x');
+  const iY     = header.indexOf('y');
+  const iEk    = header.indexOf('ek');
+  const iEp    = header.indexOf('ep');
+  const iEtot  = header.indexOf('etot');
+  const iEx    = header.indexOf('ex');
+  const iEy    = header.indexOf('ey');
+  const iMx    = header.indexOf('mx');
+  const iMy    = header.indexOf('my');
+  const hasPos = iEx >= 0;
+
+  const byStep = {};
+  const simIds = new Set();
+
+  for (let i = 1; i < lines.length; i++) {
+    const cols = lines[i].split(',');
+    if (cols.length < 5) continue;
+    const simId = parseInt(cols[iSimId]);
+    const step  = parseInt(cols[iStep]);
+    const x     = parseFloat(cols[iX])  / AU_M;
+    const y     = parseFloat(cols[iY])  / AU_M;
+    const ek    = parseFloat(cols[iEk]);
+    const ep    = parseFloat(cols[iEp]);
+    const etot  = parseFloat(cols[iEtot]);
+    const ex    = hasPos ? parseFloat(cols[iEx]) / AU_M : null;
+    const ey    = hasPos ? parseFloat(cols[iEy]) / AU_M : null;
+    const mx    = hasPos ? parseFloat(cols[iMx]) / AU_M : null;
+    const my    = hasPos ? parseFloat(cols[iMy]) / AU_M : null;
+
+    simIds.add(simId);
+    if (!byStep[step]) byStep[step] = [];
+    byStep[step].push({ simId, x, y, ek, ep, etot, ex, ey, mx, my });
+  }
+
+  const steps = Object.keys(byStep).map(Number).sort((a,b) => a-b);
+  const frames = steps.map(step => ({ step, asteroids: byStep[step] }));
+  const earthPos = steps.map(step => {
+    const row = byStep[step][0];
+    return row.ex !== null ? { x: row.ex, y: row.ey } : null;
+  });
+  const moonPos = steps.map(step => {
+    const row = byStep[step][0];
+    return row.mx !== null ? { x: row.mx, y: row.my } : null;
+  });
+
+  return { frames, earthPos, moonPos, simIds: [...simIds] };
+}
+
+function loadCSV(text, filename) {
+  const { frames, earthPos, moonPos, simIds } = parseCSV(text);
+  csvFrames    = frames;
+  csvEarthPos  = earthPos;
+  csvMoonPos   = moonPos;
+  csvStep      = 0;
+  csvTotalSims = simIds.length * 10;
+  csvImpacts   = 0;
+
+  bodies = IC_BODIES.map(b => {
+    const {ax, ay} = computeAccel(b.x, b.y,
+      IC_BODIES.filter(o => o !== b).map(o => ({x:o.x, y:o.y, mass:o.mass})));
+    return { ...b, ax, ay };
+  });
+
+  asteroids = simIds.map(id => ({
+    simId: id, active: true, hit: false, trail: [],
+    x: 0, y: 0, ek: 0, ep: 0, etot: 0,
+    vx: 0, vy: 0, ax: 0, ay: 0
+  }));
+
+  const maxStep = frames.length > 0 ? frames[frames.length-1].step : 0;
+  document.getElementById('csv-info').style.display = 'block';
+  document.getElementById('csv-info').textContent =
+    '\u2713 ' + filename + ' \u2014 ' + frames.length + ' pasos, ' + simIds.length + ' trayectorias';
+  document.getElementById('st-source').textContent =
+    filename + ' \u00b7 ' + simIds.length + ' trayect. \u00b7 ' + maxStep + ' dias';
+  document.getElementById('c-info').style.display = 'block';
+  document.getElementById('st-sims-c').textContent = csvTotalSims;
+  document.getElementById('st-prob-c').textContent = '\u2014';
+
+  day = 0; impacts = 0; E0 = null; energyHistory = [];
+  csvMode = true;
+}
+
+function stepCSV() {
+  if (csvStep >= csvFrames.length) return;
+  const frame = csvFrames[csvStep];
+  const hasPosData = csvEarthPos[csvStep] !== null;
+
+  if (hasPosData) {
+    bodies[1].x = csvEarthPos[csvStep].x;
+    bodies[1].y = csvEarthPos[csvStep].y;
+    bodies[2].x = csvMoonPos[csvStep].x;
+    bodies[2].y = csvMoonPos[csvStep].y;
+  } else {
+    verletBodies(bodies, dt);
+  }
+
+  for (const row of frame.asteroids) {
+    const ast = asteroids.find(a => a.simId === row.simId);
+    if (!ast || !ast.active) continue;
+    ast.trail.push({ x: ast.x, y: ast.y });
+    if (ast.trail.length > TRAIL_LEN) ast.trail.shift();
+    ast.x = row.x; ast.y = row.y;
+    ast.ek = row.ek; ast.ep = row.ep; ast.etot = row.etot;
+
+    const dx = ast.x - bodies[1].x, dy = ast.y - bodies[1].y;
+    if (Math.sqrt(dx*dx + dy*dy) <= R_EARTH_AU) {
+      ast.active = false; ast.hit = true;
+      csvImpacts++; impacts++;
+      flashImpact();
+    }
+  }
+
+  const ref = frame.asteroids[0];
+  if (ref) {
+    const en = { K: ref.ek, U: ref.ep, E: ref.etot };
+    if (E0 === null) E0 = en.E;
+    energyHistory.push(en);
+    if (energyHistory.length > 200) energyHistory.shift();
+  }
+
+  day = frame.step;
+  csvStep++;
+
+  if (csvStep >= csvFrames.length) {
+    const probC = (csvImpacts / asteroids.length * 100).toFixed(2);
+    document.getElementById('st-prob-c').textContent = probC + '%';
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  CONTROLES DE MODO
+// ─────────────────────────────────────────────────────────────────────────────
+document.getElementById('btn-mode-js').onclick = function() {
+  csvMode = false;
+  this.className = 'active';
+  document.getElementById('btn-mode-csv').className = '';
+  document.getElementById('csv-zone').style.display = 'none';
+  document.getElementById('js-controls').style.display = '';
+  document.getElementById('c-info').style.display = 'none';
+  init();
+};
+
+document.getElementById('btn-mode-csv').onclick = function() {
+  this.className = 'active';
+  document.getElementById('btn-mode-js').className = '';
+  document.getElementById('csv-zone').style.display = 'block';
+  document.getElementById('js-controls').style.display = 'none';
+};
+
+document.getElementById('csv-input').onchange = function(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => loadCSV(ev.target.result, file.name);
+  reader.readAsText(file);
+};
+
+document.getElementById('btn-reset').onclick = () => {
+  if (csvMode && csvFrames.length > 0) {
+    csvStep = 0; csvImpacts = 0;
+    day = 0; impacts = 0; E0 = null; energyHistory = [];
+    asteroids.forEach(a => { a.active = true; a.hit = false; a.trail = []; a.x = 0; a.y = 0; });
+    bodies = IC_BODIES.map(b => {
+      const {ax, ay} = computeAccel(b.x, b.y,
+        IC_BODIES.filter(o => o !== b).map(o => ({x:o.x, y:o.y, mass:o.mass})));
+      return { ...b, ax, ay };
+    });
+  } else {
+    N_AST = parseInt(document.getElementById('inp-n').value) || 80;
+    U_POS = parseFloat(document.getElementById('sl-upos').value) * 1e-3;
+    U_VEL = parseFloat(document.getElementById('sl-uvel').value) / 173.15;
+    init();
+  }
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
 //  ARRANQUE
 // ─────────────────────────────────────────────────────────────────────────────
 init();
+
+function loop() {
+  if (isPlaying) {
+    if (csvMode) {
+      for (let s = 0; s < speed; s++) stepCSV();
+    } else {
+      for (let s = 0; s < speed; s++) step();
+    }
+    updateStats();
+    drawEnergyChart();
+  }
+  render();
+  requestAnimationFrame(loop);
+}
 loop();
 </script>
 </body>
