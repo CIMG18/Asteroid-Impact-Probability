@@ -4,18 +4,6 @@ Simulación Monte Carlo en C para estimar la **probabilidad de impacto de un ast
 
 ---
 
-## Tabla de contenidos
-
-- [Estructura del proyecto](#estructura-del-proyecto)
-- [Modelo físico](#modelo-físico)
-- [Método Monte Carlo](#método-monte-carlo)
-- [Cómo compilar y ejecutar](#cómo-compilar-y-ejecutar)
-- [Salida del programa](#salida-del-programa)
-- [Visualizador interactivo](#visualizador-interactivo)
-- [Parámetros configurables](#parámetros-configurables)
-- [Fuentes de datos de referencia](#fuentes-de-datos-de-referencia)
-
----
 
 ## Estructura del proyecto
 
@@ -25,13 +13,13 @@ Asteroid-Impact-Probability/
 │   ├── main.c          # Motor Monte Carlo: muestreo, loop de simulación, salida
 │   └── physics.c       # Integrador Velocity Verlet, vectores, energías
 ├── include/
-│   └── physics.h       # Structs (Vector3, Body), constantes astronómicas, prototipos
+│   └── physics.h       # Constantes astronómicas, prototipos
 ├── data/
 │   └── trajectories.csv  # Trayectorias generadas (1 de cada 10 simulaciones)
-├── visualizer.html       # Visualizador 3D interactivo (N-cuerpos en JavaScript)
-├── visualize_results.py  # Visualizador alternativo 3D con matplotlib (lee el CSV)
-├── Makefile              # Compilación: gcc -O3 -Wall
-└── nbody-analisis.md     # Notas de referencia sobre el modelo físico
+├── visualizer.html       # Visualizador 3D interactivo
+├── visualize_results.py  # Visualizador alternativo 3D con matplotlib
+├── Makefile              
+└── nbody-analisis.md    
 ```
 
 ---
