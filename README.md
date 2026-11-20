@@ -121,13 +121,6 @@ Además genera `data/trajectories.csv` con el estado completo (posición, veloci
 
 ---
 
-## Visualizador interactivo
-
-El archivo [`visualizer.html`](visualizer.html) es un visualizador autocontenido que puede usar los calculos contenidos en el CSV **O** implementar el mismo integrador Velocity Verlet N-cuerpos directamente en JavaScript y correr la simulación en el navegador.
-
-```bash
-open visualizer.html
-```
 
 ## Parámetros configurables
 
