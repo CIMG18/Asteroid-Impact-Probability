@@ -1,6 +1,6 @@
 # Asteroid Impact Probability
 
-Simulación Monte Carlo en C para estimar la **probabilidad de impacto de un asteroide con la Tierra**. Las órbitas de los asteroides nunca se conocen con precisión perfecta — las observaciones telescópicas tienen error de medición. En lugar de calcular una única trayectoria determinista, el proyecto muestrea miles de trayectorias plausibles consistentes con esa incertidumbre y cuenta cuántas de ellas intersectan la Tierra.
+Simulación de **probabilidad de impacto de un asteroide con la Tierra** usando los métodos N-cuerpos y Monte Carlo en C. Las órbitas de los asteroides nunca se conocen con precisión perfecta — las observaciones telescópicas tienen error de medición. En lugar de calcular una única trayectoria determinista, el proyecto muestrea miles de trayectorias plausibles consistentes con esa incertidumbre y cuenta cuántas de ellas intersectan la Tierra.
 
 ---
 
@@ -16,7 +16,6 @@ Asteroid-Impact-Probability/
 │   └── physics.h       # Constantes astronómicas, prototipos
 ├── data/
 │   └── trajectories.csv  # Trayectorias generadas (1 de cada 10 simulaciones)
-├── visualizer.html       # Visualizador 3D interactivo
 ├── visualize_results.py  # Visualizador alternativo 3D con matplotlib
 ├── Makefile              
 └── nbody-analisis.md    
@@ -73,12 +72,6 @@ $$
 \mathbf{r}_i &= \mathbf{r}_{\text{base}} + \mathcal{N}\!\left(\mathbf{0},\, \sigma_{\text{pos}}^2 \mathbf{I}\right), & \sigma_{\text{pos}} &= 1\,000\ \text{km} \\
 \mathbf{v}_i &= \mathbf{v}_{\text{base}} + \mathcal{N}\!\left(\mathbf{0},\, \sigma_{\text{vel}}^2 \mathbf{I}\right), & \sigma_{\text{vel}} &= 100\ \text{m/s}
 \end{aligned}
-$$
-
-Los números aleatorios se generan con el método **Box-Muller**:
-
-$$
-z = \sqrt{-2 \ln u_1}\,\cos\!\left(2\pi u_2\right), \qquad u_1, u_2 \sim \mathcal{U}(0, 1)
 $$
 
 Cada muestra se integra durante **365 pasos (1 año)**. Si la distancia entre el asteroide y la Tierra cae por debajo de `RADIUS_EARTH = 6.371×10⁶ m`, se registra un impacto.
