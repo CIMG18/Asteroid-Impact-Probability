@@ -1,24 +1,23 @@
 # Asteroid Impact Probability
 
-Simulación de **probabilidad de impacto de un asteroide con la Tierra** usando los métodos N-cuerpos y Monte Carlo en C. Las órbitas de los asteroides nunca se conocen con precisión perfecta — las observaciones telescópicas tienen error de medición. En lugar de calcular una única trayectoria determinista, el proyecto muestrea miles de trayectorias plausibles consistentes con esa incertidumbre y cuenta cuántas de ellas intersectan la Tierra.
+Simulación del sistema **Sol–Tierra–Luna** usando gravitación N-cuerpos en C puro. El programa integra las órbitas de los tres cuerpos durante 10 años con el método Velocity Verlet y exporta las trayectorias a un CSV que se visualiza como animación 2D en Python.
 
 ---
-
 
 ## Estructura del proyecto
 
 ```
 Asteroid-Impact-Probability/
 ├── src/
-│   ├── main.c          # Motor Monte Carlo: muestreo, loop de simulación, salida
+│   ├── main.c          # Integración N-cuerpos Sol-Tierra-Luna, exporta CSV
 │   └── physics.c       # Integrador Velocity Verlet, vectores, energías
 ├── include/
-│   └── physics.h       # Constantes astronómicas, prototipos
+│   └── physics.h       # Structs (Vector3, Body), constantes astronómicas, prototipos
 ├── data/
-│   └── trajectories.csv  # Trayectorias generadas (1 de cada 10 simulaciones)
-├── visualize_results.py  # Visualizador alternativo 3D con matplotlib
-├── Makefile              
-└── nbody-analisis.md    
+│   └── trajectories.csv  # Posiciones de los 3 cuerpos por cada día simulado
+├── visualize_results.py  # Animación 2D con matplotlib.animation.FuncAnimation
+├── visualizer.html       # Visualizador interactivo N-cuerpos en el navegador
+└── Makefile              # Compilación: gcc -O3 -Wall
 ```
 
 ---
@@ -27,18 +26,17 @@ Asteroid-Impact-Probability/
 
 ### Gravitación N-cuerpos
 
-El sistema está compuesto por **Sol, Tierra, Luna y el asteroide**. La aceleración gravitacional sobre cualquier cuerpo `i` debida a los demás es:
+El sistema está compuesto por **Sol, Tierra y Luna**. La aceleración gravitacional sobre cualquier cuerpo `i` debida a los demás es:
 
 $$
 \mathbf{a}_i = G \sum_{j \neq i} m_j \, \frac{\mathbf{r}_j - \mathbf{r}_i}{\left|\mathbf{r}_j - \mathbf{r}_i\right|^3}
 $$
 
-Sol, Tierra y Luna se integran **entre sí** en cada paso de tiempo usando N-cuerpos completo (`step_verlet_bodies`). El asteroide se integra bajo la gravedad de los tres cuerpos actualizados (`step_verlet`).
+Los tres cuerpos se integran **entre sí** en cada paso de tiempo usando N-cuerpos completo (`step_verlet_bodies`): el Sol perturba a la Luna, la Tierra perturba al Sol, etc. No hay cuerpos fijos.
 
 ### Integrador Velocity Verlet
 
 Cada paso de tiempo `Δt = 1 día (86 400 s)` aplica el esquema simétrico de Verlet:
-
 
 $$
 \begin{aligned}
@@ -48,10 +46,9 @@ $$
 \end{aligned}
 $$
 
-
 El promedio de aceleraciones en el paso de velocidad es lo que distingue a Velocity Verlet de métodos más simples: **conserva la energía** a largo plazo sin disipación artificial.
 
-### Condiciones iniciales de los cuerpos principales
+### Condiciones iniciales
 
 Las velocidades orbitales se calculan analíticamente a partir de la condición de órbita circular `v = √(G·M/r)`:
 
@@ -61,25 +58,34 @@ Las velocidades orbitales se calculan analíticamente a partir de la condición 
 | Tierra | (1.496×10¹¹ m, 0, 0) | (0, ~29 784 m/s, 0) |
 | Luna   | (Tierra + 3.844×10⁸ m, 0, 0) | (0, v_tierra + ~1 022 m/s, 0) |
 
-Cada simulación Monte Carlo **resetea los cuerpos a estas condiciones iniciales**, garantizando que el sistema físico de fondo es idéntico para todas las muestras.
+---
 
-## Método Monte Carlo
+## Cómo compilar y ejecutar
 
-La incertidumbre de medición del telescopio se modela como una distribución gaussiana sobre la posición y velocidad base del asteroide. Para cada simulación `i` de `N = 1000`:
+### Requisitos
 
-$$
-\begin{aligned}
-\mathbf{r}_i &= \mathbf{r}_{\text{base}} + \mathcal{N}\!\left(\mathbf{0},\, \sigma_{\text{pos}}^2 \mathbf{I}\right), & \sigma_{\text{pos}} &= 1\,000\ \text{km} \\
-\mathbf{v}_i &= \mathbf{v}_{\text{base}} + \mathcal{N}\!\left(\mathbf{0},\, \sigma_{\text{vel}}^2 \mathbf{I}\right), & \sigma_{\text{vel}} &= 100\ \text{m/s}
-\end{aligned}
-$$
+- `gcc` (incluido en macOS con Xcode Command Line Tools)
+- `make`
+- Python: `pip install matplotlib pandas numpy`
 
-Cada muestra se integra durante **365 pasos (1 año)**. Si la distancia entre el asteroide y la Tierra cae por debajo de `RADIUS_EARTH = 6.371×10⁶ m`, se registra un impacto.
+### Compilar y simular
 
-La probabilidad final es:
-
+```bash
+make && ./main
 ```
-P(impacto) = N_impactos / N_simulaciones
+
+Genera `data/trajectories.csv` con las posiciones de los 3 cuerpos en cada uno de los 3 650 pasos (10 años × 365 días).
+
+### Visualizar la animación
+
+```bash
+python3 visualize_results.py
+```
+
+### Limpiar binarios
+
+```bash
+make clean
 ```
 
 ---
@@ -87,44 +93,66 @@ P(impacto) = N_impactos / N_simulaciones
 ## Salida del programa
 
 ```
-Semilla fija: 42 (resultados reproducibles)
-Iniciando Montecarlo en C: 1000 simulaciones, 365 dias cada una...
-Progreso: 100/1000 simulaciones completadas.
-...
+Simulando sistema Sol-Tierra-Luna: 10 anios (3650 pasos de 1 dia)...
 
 ╔══════════════════════════════════════╗
-║        RESULTADOS FINALES            ║
+║   SISTEMA SOL-TIERRA-LUNA            ║
 ╠══════════════════════════════════════╣
-║  Semilla usada       : 42            ║
-║  Simulaciones        : 1000          ║
-║  Duracion por sim.   : 365      dias ║
+║  Duracion        : 10         anios  ║
+║  Pasos           : 3650              ║
+║  DT              : 1 dia (86400 s)   ║
 ╠══════════════════════════════════════╣
-║  Impactos detectados : 0             ║
-║  Probabilidad        : 0.0000 %      ║
-╠══════════════════════════════════════╣
-║  CONSERVACION DE ENERGIA (sim. 0)    ║
-║  E inicial : -4.984186e+18 J         ║
-║  E final   : -4.986417e+18 J         ║
-║  Error max : 0.046787     %          ║
-║  Integrador: ACEPTABLE (<1.00%)      ║
+║  CONSERVACION DE ENERGIA             ║
+║  E inicial : -2.679957e+33 J         ║
+║  Error max : 0.000028     %          ║
+║  Integrador: EXCELENTE (<0.01%)      ║
 ╚══════════════════════════════════════╝
+
+Datos guardados en data/trajectories.csv
 ```
 
-Además genera `data/trajectories.csv` con el estado completo (posición, velocidad, energías) de 1 de cada 10 simulaciones, paso a paso.
+El diagnóstico de conservación de energía verifica que el integrador Velocity Verlet funciona correctamente — un error < 0.01% en 10 años de simulación confirma que las órbitas son físicamente fiables.
 
 ---
 
+## Visualización
+
+La animación `visualize_results.py` muestra dos paneles simultáneos:
+
+| Panel | Contenido |
+|---|---|
+| **Izquierdo** — Vista heliocéntrica | Sol 🟡 en el centro, Tierra 🔵 trazando su órbita progresivamente, Luna ⚪ con estela deslizante |
+| **Derecho** — Referencial geocéntrico | Tierra 🔵 fija en el origen, Luna ⚪ orbitando a su alrededor |
+
+La estela de la Tierra se acumula desde el día 0, mostrando cuántas vueltas completas ha dado. La Luna usa una ventana deslizante de 60 días para mantener la imagen legible.
+
+---
 
 ## Parámetros configurables
 
-Todos los parámetros de la simulación C se definen en [`src/main.c`](src/main.c):
+**En [`src/main.c`](src/main.c):**
 
 | Parámetro | Valor actual | Descripción |
 |---|---|---|
-| `N_SIMULATIONS` | 1 000 | Número de muestras Monte Carlo |
+| `N_YEARS` | 10 | Años de simulación |
 | `DT` | 86 400 s | Paso de tiempo (1 día) |
-| `MAX_STEPS` | 365 | Duración de cada simulación (1 año) |
-| `UNCERTAINTY_POS` | 1×10⁶ m | Incertidumbre de posición (1 000 km, σ gaussiano) |
-| `UNCERTAINTY_VEL` | 100 m/s | Incertidumbre de velocidad (σ gaussiano) |
+
+**En [`visualize_results.py`](visualize_results.py):**
+
+| Parámetro | Valor actual | Descripción |
+|---|---|---|
+| `TRAIL_LEN` | 60 | Días de estela visible (Sol y Luna) |
+| `INTERVAL` | 20 ms | Tiempo entre frames (~50 fps) |
+| `STEP_SKIP` | 2 | Pasos del CSV por frame (velocidad de reproducción) |
 
 ---
+
+## Fuentes de datos de referencia
+
+- **JPL Small-Body Database (SBDB)** — elementos orbitales con incertidumbres 1-sigma:
+  `https://ssd-api.jpl.nasa.gov/sbdb.api`
+
+- **JPL Sentry System** — objetos near-Earth monitoreados para posible impacto:
+  `https://ssd-api.jpl.nasa.gov/sentry.api`
+
+- **JPL Horizons DE421** — efemérides para las condiciones iniciales del sistema Sol-Tierra-Luna.
