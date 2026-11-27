@@ -16,7 +16,6 @@ Asteroid-Impact-Probability/
 ├── data/
 │   └── trajectories.csv  # Posiciones de los 3 cuerpos por cada día simulado
 ├── visualize_results.py  # Animación 2D con matplotlib.animation.FuncAnimation
-├── visualizer.html       # Visualizador interactivo N-cuerpos en el navegador
 └── Makefile              # Compilación: gcc -O3 -Wall
 ```
 
@@ -121,8 +120,8 @@ La animación `visualize_results.py` muestra dos paneles simultáneos:
 
 | Panel | Contenido |
 |---|---|
-| **Izquierdo** — Vista heliocéntrica | Sol 🟡 en el centro, Tierra 🔵 trazando su órbita progresivamente, Luna ⚪ con estela deslizante |
-| **Derecho** — Referencial geocéntrico | Tierra 🔵 fija en el origen, Luna ⚪ orbitando a su alrededor |
+| **Izquierdo** — Vista heliocéntrica | Sol en el centro, Tierra trazando su órbita progresivamente |
+| **Derecho** — Referencial geocéntrico | Tierra fija en el origen, Luna orbitando a su alrededor |
 
 La estela de la Tierra se acumula desde el día 0, mostrando cuántas vueltas completas ha dado. La Luna usa una ventana deslizante de 60 días para mantener la imagen legible.
 
