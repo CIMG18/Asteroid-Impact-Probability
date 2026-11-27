@@ -45,15 +45,18 @@ fig, axes = plt.subplots(1, 2, figsize=(14, 7),
 fig.suptitle('Sistema Sol–Tierra–Luna  |  Integrador Velocity Verlet (N-cuerpos)',
              color='#c9d1d9', fontsize=13, y=0.97)
 
-# Panel izquierdo: vista heliocéntrica (órbita terrestre completa)
+# Panel izquierdo: vista heliocéntrica — zoom ajustado para ver la elipse
+# La órbita terrestre va de 0.983 UA (perihelio) a 1.017 UA (afelio).
+# Centramos el eje en 0 con margen justo para que la elipse llene el panel
+# y la excentricidad sea visualmente evidente.
 ax_main = axes[0]
 ax_main.set_facecolor('#04080f')
 ax_main.set_aspect('equal')
-ax_main.set_xlim(-1.6, 1.6)
-ax_main.set_ylim(-1.6, 1.6)
+ax_main.set_xlim(-1.08, 1.08)
+ax_main.set_ylim(-1.08, 1.08)
 ax_main.set_xlabel('X  [UA]', color='#8b949e')
 ax_main.set_ylabel('Y  [UA]', color='#8b949e')
-ax_main.set_title('Vista heliocéntrica', color='#8b949e', fontsize=10)
+ax_main.set_title('Vista heliocéntrica  (e = 0.0167)', color='#8b949e', fontsize=10)
 ax_main.tick_params(colors='#8b949e')
 for spine in ax_main.spines.values():
     spine.set_edgecolor('#21262d')

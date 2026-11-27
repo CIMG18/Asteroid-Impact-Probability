@@ -10,19 +10,35 @@ int main(void) {
     // -------------------------------------------------------------------------
     // Condiciones iniciales de los cuerpos (S.I.)
     //
-    // Velocidades de órbita circular: v = sqrt(G * M_central / r)
-    //   Tierra: v = sqrt(G * M_sol   / r_tierra) ≈ 29 784 m/s en +Y
-    //   Luna:   v = sqrt(G * M_tierra / r_luna)  ≈  1 022 m/s en +Y (relativa a Tierra)
+    // Tierra: órbita ELÍPTICA real (e = 0.0167).
+    //   El cuerpo se coloca en el PERIHELIO (punto más cercano al Sol).
+    //   La velocidad en el perihelio se obtiene de la conservación del momento
+    //   angular para una elipse kepleriana:
+    //
+    //     r_peri  = a * (1 - e)          a = semieje mayor = 1 UA
+    //     v_peri  = sqrt(G*M * (1+e) / (a*(1-e)))
+    //
+    //   Con e = 0.0167:
+    //     r_peri  ≈ 1.4710×10¹¹ m  (147.1 millones de km)
+    //     r_aph   ≈ 1.5210×10¹¹ m  (152.1 millones de km)  — afelio opuesto
+    //     v_peri  ≈ 30 287 m/s     (más rápido que en órbita circular)
+    //
+    // Luna: órbita circular alrededor de la Tierra (e_luna ≈ 0.0549 real,
+    //   simplificada a circular para mantener el enfoque en la órbita terrestre).
+    //   v = sqrt(G * M_tierra / r_luna) ≈ 1 022 m/s en +Y (relativa a Tierra)
     // -------------------------------------------------------------------------
-    double r_earth = 1.496e11;               // distancia Sol-Tierra [m]
-    double r_moon  = 3.844e8;                // distancia Tierra-Luna [m]
-    double v_earth = sqrt(G * MASS_SUN   / r_earth);  // ~29 784 m/s
-    double v_moon  = sqrt(G * MASS_EARTH / r_moon);   // ~1 022 m/s
+    double e_earth  = 0.0167;               // excentricidad orbital de la Tierra
+    double a_earth  = 1.496e11;             // semieje mayor [m] (~1 UA)
+    double r_peri   = a_earth * (1.0 - e_earth);  // distancia en perihelio [m]
+    double v_peri   = sqrt(G * MASS_SUN * (1.0 + e_earth) / (a_earth * (1.0 - e_earth)));
+
+    double r_moon   = 3.844e8;              // distancia Tierra-Luna [m]
+    double v_moon   = sqrt(G * MASS_EARTH / r_moon);  // ~1 022 m/s
 
     Body bodies[3] = {
-        {"Sol",    MASS_SUN,   {0,                 0, 0}, {0,                  0, 0}},
-        {"Tierra", MASS_EARTH, {r_earth,            0, 0}, {0,         v_earth,   0}},
-        {"Luna",   MASS_MOON,  {r_earth + r_moon,   0, 0}, {0, v_earth + v_moon,  0}}
+        {"Sol",    MASS_SUN,   {0,                0, 0}, {0,                 0, 0}},
+        {"Tierra", MASS_EARTH, {r_peri,            0, 0}, {0,        v_peri,   0}},
+        {"Luna",   MASS_MOON,  {r_peri + r_moon,   0, 0}, {0, v_peri + v_moon,  0}}
     };
 
     // -------------------------------------------------------------------------
